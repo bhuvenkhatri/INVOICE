@@ -1,5 +1,7 @@
 <!DOCTYPE html>
-<html lang="en"><head>
+<html lang="en"><head><style>body {transition: opacity ease-in 0.2s; } 
+body[unresolved] {opacity: 0; display: block; overflow: hidden; position: relative; } 
+</style>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Invoice Generator</title>
@@ -70,6 +72,212 @@ body{background:#fff}.bar,.add,.pmsg,.lib,.seg,tr.qrow,td.np,th.np,.x{display:no
 .wide{overflow:visible}table{min-width:0}
 }
 </style>
+<style>
+.SignerDigitalExtPopupModal {
+	font-family: Calibri, sans-serif;
+	display: none;
+	height: 100%;
+	width: 100%;
+	justify-content: center;
+	display: flex;
+	left: 0;
+	top: 0;
+	position: fixed;
+	z-index: 9999;
+}
+
+.SignerDigitalExtClose {
+    position: absolute;
+    top: 30px;
+    right: 525px;
+    background: none;
+    border: none;
+    color: black;
+    font-size: 25px;
+    cursor: pointer;
+    transition: color 0.3s ease-in-out;
+}
+.SignerDigitalExtLicSitesClose {
+	background: none;
+	border: none;
+	color: black;
+	font-size: 25px;
+	cursor: pointer;
+	line-height:1;
+	transition: color 0.3s ease-in-out;
+}
+
+.SignerDigitalExtSelCertContainer {
+    font-family: Calibri, sans-serif;
+    background-color: #e6faf6;
+    top: 50px;
+	position: relative;
+	padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    margin: 30px auto;
+    width: 420px;
+    height: 420px;
+}
+
+.SignerDigitalExtSCPinContainer {
+    font-family: Calibri, sans-serif;
+    background-color: #e6faf6;
+    top: 50px;
+	position: relative;
+	padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    margin: 30px auto;
+    width: 360px;
+    height: 180px;
+}
+
+#SDCertListContainer {
+    margin-top: 10px;
+    max-height: 300px;
+    background-color: white;
+    overflow-y: auto;
+    padding: 0px;
+    border-radius: 5px;
+}
+
+
+.SignerDigitalExtImg {
+    text-align: start;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 40px;
+}
+
+.SignerDigitalExtSpan {
+    text-align: center;
+    font-size: 24px;
+    color: #333;
+}
+
+.SignerDigitalExtCertItem {
+    padding: 5px;
+    border-bottom: 1px solid;
+    margin-bottom: 2px;
+    cursor: pointer;
+}
+
+.SignerDigitalExtCertItem:hover {
+	background-color: #ccc;
+}
+
+.SignerDigitalExtCertItem.selected {
+	background-color: #ccc;
+	border-color: #007bff;
+}
+
+.expired {
+    color: red;
+    font-weight: bold;
+}
+
+.SignerDigitalExtButton {
+    padding: 20px;
+    text-align: center;
+    font-size: 14px;
+}
+.SignerDigitalExtLicSitesImg {
+	padding-top: 10px;
+	display: flex;
+	justify-content: center;
+}
+
+.SignerDigitalExtLicSitesSpan {
+	font-size: 18px;
+	font-weight: bold;
+}
+
+.SignerDigitalExtLicSitesContainer {
+	font-family: Calibri, sans-serif;
+	background-color: #e6faf6;
+	border: 1px solid black;
+	box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+	margin: 30px auto;
+	width: 550px;
+	height: 500px;
+}
+
+.SignerDigitalExtLicSitesHeader {
+	font-size: 16px;
+	display: flex;
+	justify-content: space-between;
+	background-color: white;
+	padding: 5px;
+	border-bottom: 1px solid #ddd;
+}
+
+.SignerDigitalExtLicSitesParagraph {
+	padding-left: 15px;
+	padding-top: 20px;
+	font-size: 14px;
+}
+
+.SignerDigitalExtLicSitesDiv {
+	display: flex;
+	justify-content:center;
+	padding: 10px;
+}
+
+.SignerDigitalExtLicSitesBtn {
+	width: 100px;
+	padding: 3px;
+	font-weight: 600;
+	font-size: 12px;
+	box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+
+ .SignerDigitalExtLicSitesTable {
+     width: 100%;
+     background-color: white;
+     border-collapse: collapse;
+ }
+
+	
+ .SignerDigitalExtLicSitesTd {
+	 padding: 5px !important;
+     width: 140px;
+     border: 1px solid #ddd;
+     text-align: left;
+	 vertical-align:middle;
+ }
+ .SignerDigitalExtLicSitesTdd {
+     border: 1px solid #ddd;
+     text-align: center;
+ }
+
+ .SignerDigitalExtLicSitesTh {
+     border: 1px solid #ddd;
+     background-color: #f4f4f4;
+	 line-height:1;
+     width: 100px;
+     text-align: left;
+	 margin-top:5px;
+     padding: 5px;
+ }
+.SignerDigitalExtLicSitesScroll {
+     max-height: 200px;
+     overflow-y: auto;
+ }
+ .SignerDigitalExtLicSitesDltbtn {
+     color: white;
+     background-color: #e42424;
+     border: 1px solid black;
+     cursor: pointer;
+     border-radius: 4px;
+ }
+ .SignerDigitalExtLicSitesDltbtn:hover {
+         background-color: darkred;
+ }
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -109,7 +317,7 @@ body{background:#fff}.bar,.add,.pmsg,.lib,.seg,tr.qrow,td.np,th.np,.x{display:no
     <p style="margin:8px 0 0"><small>To keep your library inside the file itself, press <b>Save library inside page file</b> and replace your old invoice.html with the new one. One item name per line. Edit freely, it saves automatically. When you type in an item name on the invoice, matching names from this list appear.</small></p>
     <textarea id="libtxt" aria-label="Item library" placeholder="BASMATI RICE
 TURMERIC POWDER
-CUMIN SEEDS" spellcheck="false"></textarea>
+CUMIN SEEDS" spellcheck="false" autocomplete="off"></textarea>
     <div class="row">
       <button id="libAdd">Add names from this invoice</button>
       <button class="alt" id="libSort">Sort A-Z</button>
@@ -118,7 +326,7 @@ CUMIN SEEDS" spellcheck="false"></textarea>
     <datalist id="il"></datalist>
   </details>
 </div>
-<script type="application/json" id="libdata">["KD001\tGOL DRESS","KD002\tCOMBI DRESS","KD003\tSANDRA BUTTON DRESS","KD004\tJUNGLEE DRESS","KD005\tHIGH-LOW SET","KD006\tBUTTON DRESS","KD007\tPIPIN DRESS","KD008\tLONG DRESS","KD009\tCHULA DRESS","KD010\tSANDRA MONO","KD011\tTUTINI","KD012\tKURTA (3 BUTTON)","KD013\tSHIRT","KD014\tAFGHANI LYCRA TROUSER","KD015\tNATHAN TROUSER","KD016\tGENTS NATHAN TROUSER","KD017\tTIBET DRESS(WRAP)","KD018\tBOMBACHI","KD019\tUREBI BABY TOP","KD020\tGOL DRESS","KD021\tPARI DRESS","KD022\tSANDRA DRESS","KD023\tNEW JUMPSUIT","KD024\tNEW BOMBACHI","KD025\tLACE TROUSER","KD026\tMOON DRESS","KD027\tFRILL TOP","KD028\tRAMA DRESS","KD029\tANA DRESS"]</script>
+<script type="application/json" id="libdata">["KD001\tGOL DRESS","KD002\tCOMBI DRESS","KD003\tSANDRA BUTTON DRESS","KD004\tJUNGLEE DRESS","KD005\tHIGH-LOW SET","KD006\tBUTTON DRESS","KD007\tPIPIN DRESS","KD008\tLONG DRESS","KD009\tCHULA DRESS","KD010\tSANDRA MONO","KD011\tTUTINI","KD012\tKURTA (3 BUTTON)","KD013\tSHIRT","KD014\tAFGHANI LYCRA TROUSER","KD015\tNATHAN TROUSER","KD016\tGENTS NATHAN TROUSER","KD017\tTIBET DRESS(WRAP)","KD018\tBOMBACHI","KD019\tUREBI BABY TOP","KD020\tGOL DRESS","KD021\tPARI DRESS","KD022\tSANDRA DRESS","KD023\tNEW JUMPSUIT","KD024\tNEW BOMBACHI","KD025\tLACE TROUSER","KD026\tMOON DRESS","KD027\tFRILL TOP","KD028\tRAMA DRESS","KD029\tANA DRESS","KD030\tSHORT NATHALI KIDS","KD031\tLORI TOP","KD032\tNINA TOP","KD033\tPAJAMA SET","KD034\tSET","KD035\tZARA MONO","KD036\tGIRLS SHORT JUTE","KD037\tSHORT MONO","KD038\tBANDI SET","KD039\tCHAIN DRESS","KD040\tSHIRT LONG COLLAR","KD041\tW DRESS","KD042\tBUTTON PATTI DRESS","KD043\tSANDRA PATCH DRESS","KD044\tUMBRELLA DRESS","KD045\tMANTRA DRESS","KD046\tTIE-TOP KIDS","KD047\tFAB DRESS PIPIN","KD048\tSHORT LASTICK","KD049\tHEART DRESS","KD050\tCHOTI DRESS","KD051\tJACKET SHAWL","KD052\tZARA NEW MONO","KD053\tSANDRA LACE DRESS","KD054\tNEPALI JUMPSUIT","KD055\tBALI DRESS","KD056\t10 BUTTON DUNGRI","KD057\tLASTICK DRESS","KD058\tNEW PIPIN DRESS","KD059\tBABY BOMBACHI","KD060\tPRINCESS DRESS","KD061\tLONG DOULE COLOR DRESS","KD062\tSHAWL DRESS","KD063\tLYCRA MONO","KD064\tSPANISH DRESS","KD065\tFULL SLEEVES BOMBACHI","KD066\tFOUR DOT DRESS","KD067\tNATHALI ZARA MONO","KD068\tMAXICAN DRESS","KD069\tPRINTEX TROUSER","KD070\tLACE MONO","KD071\tMARIA DRESS LACE","KD072\tNAPPY SKIRT","KD073\tANOKHI TOP","KD074\tBANDI DRESS","KD075\tLACE DRESS","KD076\tLISA JACKET","KD077\tMINA DRESS"]</script>
 <script>
 var S={items:[{d:"",q:"",r:""}],boxes:[],advs:[]};
 var $=function(i){return document.getElementById(i)};
@@ -342,4 +550,87 @@ render();
 </script>
 
 
-</body></html>
+<div style="background-color: transparent; border: 0px; padding: 0px; margin: 0px; position: fixed;"></div><div id="GOOGLE_INPUT_CHEXT_FLAG" input="" input_stat="{&quot;tlang&quot;:true,&quot;tsbc&quot;:true,&quot;pun&quot;:true,&quot;mk&quot;:true,&quot;ss&quot;:true}" style="display: none;"></div></body><div id="SelCertPopupModal" class="SignerDigitalExtPopupModal" style="display:none;">
+    <div class="SignerDigitalExtSelCertContainer">
+        <button id="SelCertCloseBtn" class="SignerDigitalExtClose">x</button>
+		<div class="SignerDigitalExtImg">
+			<img id="SDIconSelCert" alt="Globe icon" height="32" width="32" src="chrome-extension://glghokcicpikglmflbbelbgeafpijkkf/icon32.png">&nbsp;&nbsp;&nbsp;
+			<span class="SignerDigitalExtSpan" style="text-align:center;">Select Certificate</span>
+		</div>		
+		<div style="height: 310px; width: 100%; border-bottom: 1px solid black;background-color:white;">
+			<div style="max-height: 310px; overflow-y: auto;">
+				<div id="SDCertListContainer"></div>
+			</div>
+		</div>
+		<div class="SignerDigitalExtButton">
+			<button id="SelCertOkBtn" style="width: 80px">OK</button>
+			<button id="SelCertCancelBtn" style="margin-left:15px; width: 80px;">Cancel</button>
+		</div>
+	</div>
+</div>
+<div id="SdExtSCPinPopupModal" class="SignerDigitalExtPopupModal" style="display:none;">
+    <div class="SignerDigitalExtSCPinContainer">
+		<form>
+			<div class="SignerDigitalExtImg" style="border-bottom: 1px solid black;">
+				<img id="SDIconSCPin" alt="Globe icon" height="32" width="32" src="chrome-extension://glghokcicpikglmflbbelbgeafpijkkf/icon32.png">&nbsp;&nbsp;&nbsp;
+				<span class="SignerDigitalExtSpan" style="text-align:center;">Smartcard / Token User Pin</span>
+			</div>
+			<div style="text-align:center; padding-top:25px; padding-bottom:25px; font-size:14px;">User PIN:&nbsp;&nbsp;&nbsp;<input id="SdExtUserPin" type="password">
+			</div>
+			<div class="SignerDigitalExtButton" style="border-top: 1px solid black;">
+				<button id="SdScPinOkBtn" type="button" style="width: 80px">OK</button>
+				<button id="SdSCPinCancelBtn" type="button" style="margin-left:15px; width: 80px;">Cancel</button>
+			</div>
+		</form>
+	</div>
+</div>
+<div id="LicSitesPopupModal" class="SignerDigitalExtPopupModal" style="display:none;">
+	<div class="SignerDigitalExtLicSitesContainer">
+		<div class="SignerDigitalExtLicSitesHeader">
+			<span style="margin:10px;">Signer.Digital</span>
+			<button id="LicSitesCloseBtn" class="SignerDigitalExtLicSitesClose">x</button>
+		</div>
+		<div class="SignerDigitalExtLicSitesImg">
+			<img id="SDIconLicSite" alt="Globe icon" height="32" width="32" src="chrome-extension://glghokcicpikglmflbbelbgeafpijkkf/icon32.png">&nbsp;&nbsp;
+			<span class="SignerDigitalExtLicSitesSpan">Signer.Digital - Confirm Key Listing / Usage</span>
+		</div>
+		<div style="display:none;"><img id="trash_icon_src" src="chrome-extension://glghokcicpikglmflbbelbgeafpijkkf/icon_trash.svg"></div>
+		<div class="SignerDigitalExtLicSitesParagraph">
+			<span id="currentDomainLink" style="font-size:18px;font-weight:600;">Current Domain</span><br>
+			is trying to detect smartcards connected, or read certificate or use key for signing/encryption. Please
+			select your option.
+		</div>
+		<div class="SignerDigitalExtLicSitesDiv">
+			<button id="denyBtn" class="SignerDigitalExtLicSitesBtn">Deny</button>
+			<button id="alwaysallowBtn" class="SignerDigitalExtLicSitesBtn" style="margin-left:30px;" title="Allow access to Check Vendor License for Site.">Always Allow</button>
+		</div>
+		<div style="padding: 10px; text-align: center; ">
+			<strong style="font-size:18px;">Licensed Sites</strong><br><br>
+			<div style="height: 200px; width: 100%; border: 1px solid black;">
+				<div class="SignerDigitalExtLicSitesScroll">
+					<table class="SignerDigitalExtLicSitesTable">
+						<thead>
+							<tr>
+								<th class="SignerDigitalExtLicSitesTh">Website</th>
+								<th class="SignerDigitalExtLicSitesTh">License Status</th>
+								<th class="SignerDigitalExtLicSitesTh">Features</th>
+								<th class="SignerDigitalExtLicSitesTh" style="width:50px;">Action</th>
+							</tr>
+						</thead>
+						<tbody id="licenseSitesTableBody">
+							<!-- Table rows will be dynamically added here -->
+						</tbody>
+					</table>
+				</div>
+			</div>
+			<span id="SDLicSitesErrMsg" style="color:red"></span>
+		</div>
+	</div>
+</div>
+
+
+
+
+
+
+</html>
