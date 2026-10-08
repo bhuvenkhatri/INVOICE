@@ -21,6 +21,7 @@ button.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
 button:focus-visible,input:focus-visible{outline:2px solid var(--btn);outline-offset:1px}
 .pmsg{margin-bottom:10px;padding:10px 12px;border:1px solid var(--neg);border-radius:6px;color:var(--neg);font-size:14px}
 .pmsg[hidden]{display:none}
+.sv{display:none}
 input.req{outline:2px solid var(--neg)!important;border-color:var(--neg)!important}
 .sheet{background:var(--paper);border:6px solid var(--frame);padding:0}
 .head{display:flex;justify-content:space-between;gap:16px;padding:18px 20px 12px;flex-wrap:wrap}
@@ -46,6 +47,7 @@ td input[type=number]{text-align:center;-moz-appearance:textfield}
 input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 tr.sh td{background:var(--hi);color:#000;text-align:center;font-weight:600;padding:4px 8px}
 tr.sh td.sp{background:var(--paper)}
+tr.sh td.np{background:var(--bg)}
 .dw{display:flex;align-items:center;gap:6px;padding-right:6px}
 .dw input{flex:1;min-width:0}
 .seg{display:inline-flex;flex:none;border:1px solid var(--line);border-radius:6px;overflow:hidden}
@@ -64,9 +66,89 @@ tr.qrow td.c,tr.qrow td.np{background:var(--paper)}
 .add{display:flex;gap:8px;padding:10px 12px;flex-wrap:wrap}
 .gt{display:flex;justify-content:flex-end;align-items:center;gap:20px;border-top:2px solid var(--frame);padding:12px 20px;font-weight:800;font-size:18px}
 .gt span:last-child{min-width:140px;text-align:right;font-variant-numeric:tabular-nums}
+
+@media screen and (max-width:640px){
+body{font-size:16px}
+.wrap{padding:10px 8px 28px}
+.bar{display:grid;grid-template-columns:1fr;gap:8px}
+.bar button{min-height:46px}
+.sv{display:grid;gap:8px;padding:4px 8px 14px}
+.sv button{min-height:50px;font-size:16px}
+.sheet{border-width:4px}
+.head{padding:14px 12px 10px;gap:12px}
+.l,.r{flex:1 1 100%}
+.r{align-items:stretch;text-align:left;order:-1}
+.r h1{text-align:center}
+.hn{justify-content:flex-start;font-size:20px}
+.hn input{width:100%;text-align:left;font-size:20px}
+input,.head input{font-size:16px;min-height:44px}
+.wide{overflow:visible}
+table,tbody{display:block;min-width:0;width:100%;border-top:2px solid var(--frame)}
+thead{display:none}
+tbody tr{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:10px 8px;border:1px solid var(--line);border-radius:10px;background:var(--paper);overflow:hidden}
+tbody td{display:block;width:auto!important;border:0;min-width:0}
+td::before{display:block;font-size:11px;font-weight:600;letter-spacing:.04em;opacity:.7;padding:6px 10px 0}
+td.c,td.np,td.lab,td.t{padding:0}
+td.c::before,td.np::before{display:none}
+/* item card */
+tr[data-k="items"]{grid-template-areas:"c np" "d d" "q r" "t t"}
+tr[data-k="items"] td:nth-child(1){grid-area:c;padding:10px 12px;text-align:left;font-weight:800;font-size:14px}
+tr[data-k="items"] td:nth-child(1)::before{content:"ITEM ";display:inline;padding:0;opacity:1;font-size:14px}
+tr[data-k="items"] td:nth-child(2){grid-area:d}
+tr[data-k="items"] td:nth-child(3){grid-area:q}
+tr[data-k="items"] td:nth-child(4){grid-area:r}
+tr[data-k="items"] td:nth-child(5){grid-area:t}
+tr[data-k="items"] td:nth-child(3)::before{content:"QTY"}
+tr[data-k="items"] td:nth-child(4)::before{content:"RATE"}
+tr[data-k="items"] td:nth-child(2)::before{content:"ITEM NAME"}
+/* box card */
+tr[data-k="boxes"]{grid-template-areas:"d np" "q r" "t t"}
+tr[data-k="boxes"] td:nth-child(1){display:none}
+tr[data-k="boxes"] td:nth-child(2){grid-area:d;padding:10px 12px;font-weight:800;text-align:left!important}
+tr[data-k="boxes"] td:nth-child(3){grid-area:q}
+tr[data-k="boxes"] td:nth-child(4){grid-area:r}
+tr[data-k="boxes"] td:nth-child(5){grid-area:t}
+tr[data-k="boxes"] td:nth-child(3)::before{content:"KG"}
+tr[data-k="boxes"] td:nth-child(4)::before{content:"PRICE PER KG"}
+/* advance card */
+tr[data-k="advs"]{grid-template-areas:"d np" "r r" "t t"}
+tr[data-k="advs"] td:nth-child(1),tr[data-k="advs"] td:nth-child(3){display:none}
+tr[data-k="advs"] td:nth-child(2){grid-area:d;padding:10px 12px;font-weight:800;text-align:left}
+tr[data-k="advs"] td:nth-child(4){grid-area:r}
+tr[data-k="advs"] td:nth-child(5){grid-area:t}
+tr[data-k="advs"] td:nth-child(4)::before{content:"ADVANCE AMOUNT"}
+tbody td.np{grid-area:np;justify-self:end;background:transparent;padding:4px 6px}
+.x{font-size:26px;padding:4px 12px;min-height:44px}
+td.t{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-top:1px solid var(--line);font-weight:800;font-size:17px;grid-area:t}
+td.t::before{padding:0}
+td.t::before{content:"TOTAL"}
+td input,td input[type=number]{text-align:left;background:var(--field);margin:4px 8px 8px;width:calc(100% - 16px);border:1px solid var(--line);border-radius:6px}
+.dw{flex-wrap:wrap;padding:0 8px 8px;gap:6px}
+.dw input{flex:1 1 100%;margin:4px 0 0;width:100%}
+.seg{width:100%}
+.sz{flex:1;min-height:42px;font-size:15px}
+/* shipping heading */
+tr.sh{display:block;margin:14px 8px 0;border-radius:8px;background:var(--hi)}
+tr.sh td{display:none}
+tr.sh td:nth-child(2){display:block;padding:8px;text-align:center!important;background:transparent;color:#000;font-weight:800}
+/* question row */
+tr.qrow{display:block}
+tr.qrow td{display:none}
+tr.qrow td[colspan]{display:block;padding:12px}
+tr.qrow td[colspan]::before{display:none}
+.sm{min-height:42px;padding:8px 18px}
+.add{display:grid;grid-template-columns:1fr 1fr;padding:8px}
+.add button{min-height:46px}
+.add #addA{grid-column:1/-1}
+.gt{padding:14px;font-size:18px;gap:10px;justify-content:space-between}
+.gt span:last-child{min-width:0}
+.lib{margin:12px 0}
+.lib .row button{flex:1 1 auto;min-height:44px}
+.lib textarea{font-size:16px}
+}
 @media print{
 :root{--bg:#fff;--ink:#000}
-body{background:#fff}.bar,.add,.pmsg,.lib,.seg,tr.qrow,td.np,th.np,.x{display:none!important}
+body{background:#fff}.bar,.add,.pmsg,.lib,.sv,.seg,tr.qrow,td.np,th.np,.x{display:none!important}
 .wrap{padding:0;max-width:none}.sheet{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .head input,td input{background:transparent!important;border:0}
 .wide{overflow:visible}table{min-width:0}
@@ -87,7 +169,7 @@ body{background:#fff}.bar,.add,.pmsg,.lib,.seg,tr.qrow,td.np,th.np,.x{display:no
       <div class="l">
         <b>M/S:-</b>
         <input id="name" placeholder="Name" aria-label="Name">
-        <input id="country" placeholder="Country (click to choose or type to search)" aria-label="Country" list="cl" autocomplete="off"><datalist id="cl"></datalist>
+        <input id="country" placeholder="Country (tap to choose)" aria-label="Country" list="cl" autocomplete="off"><datalist id="cl"></datalist>
       </div>
       <div class="r">
         <h1>INVOICE</h1>
@@ -107,6 +189,7 @@ body{background:#fff}.bar,.add,.pmsg,.lib,.seg,tr.qrow,td.np,th.np,.x{display:no
       <button class="alt" id="addA">+ Add advance</button>
     </div>
     <div class="gt"><span>GRAND TOTAL</span><span id="grand"></span></div>
+    <div class="sv" id="sv"></div>
   </div>
   <details class="lib">
     <summary>ITEM LIBRARY <small id="libn"></small></summary>
@@ -240,7 +323,7 @@ $("print").onclick=function(){
   try{window.print()}catch(e){}
   setTimeout(function(){
     window.removeEventListener("beforeprint",h);
-    if(!fired)$("pmsg").hidden=false;
+    if(!fired){$("pmsg").hidden=false;try{$("pmsg").scrollIntoView({behavior:"smooth",block:"center"})}catch(e){}}
   },700);
 };
 var armed=false;
@@ -410,7 +493,7 @@ function buildXlsx(){
     ["xl/worksheets/sheet1.xml",sheet]
   ]);
 }
-function showX(m){$("xmsg").textContent=m;$("xmsg").hidden=false}
+function showX(m){var x=$("xmsg");x.textContent=m;x.hidden=false;try{x.scrollIntoView({behavior:"smooth",block:"center"})}catch(e){}}
 function needNo(){
   var f=$("no");
   if(!f.value.trim()){f.classList.add("req");f.focus();showX("Please enter the invoice number first.");return false}
@@ -465,6 +548,13 @@ libSync();
     },function(){});
   }catch(e){}
 })();
+var mq=window.matchMedia("(max-width:640px)");
+function placeBtns(){
+  var host=mq.matches?$("sv"):document.querySelector(".bar");
+  host.appendChild($("xl"));host.appendChild($("print"));
+}
+if(mq.addEventListener)mq.addEventListener("change",placeBtns);else if(mq.addListener)mq.addListener(placeBtns);
+placeBtns();
 render();
 </script>
 </body>
