@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Invoice Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;800&amp;display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e9edf3;--paper:#dce6f5;--ink:#14213d;--line:#8896ad;--frame:#7a7a7a;--field:#fff;--hi:#fff200;--btn:#1f4e9c;--btnt:#fff;--neg:#b3261e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10141b;--paper:#1d2840;--ink:#e8edf7;--line:#4d5d7c;--frame:#555;--field:#141a27;--hi:#d9bd00;--btn:#6d9cf0;--btnt:#0b1220;--neg:#ff8a80}}
+:root[data-theme="dark"]{--bg:#10141b;--paper:#1d2840;--ink:#e8edf7;--line:#4d5d7c;--frame:#555;--field:#141a27;--hi:#d9bd00;--btn:#6d9cf0;--btnt:#0b1220;--neg:#ff8a80}
+*,*:before,*:after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 "Hanken Grotesk",system-ui,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:16px 12px 40px}
+.bar{display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;flex-wrap:wrap}
+button{font:inherit;font-weight:600;border:0;border-radius:6px;padding:8px 14px;background:var(--btn);color:var(--btnt);cursor:pointer}
+button.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--btn);outline-offset:1px}
+.pmsg{margin-bottom:10px;padding:10px 12px;border:1px solid var(--neg);border-radius:6px;color:var(--neg);font-size:14px}
+.pmsg[hidden]{display:none}
+.sheet{background:var(--paper);border:6px solid var(--frame);padding:0}
+.head{display:flex;justify-content:space-between;gap:16px;padding:18px 20px 12px;flex-wrap:wrap}
+.head h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.02em}
+.l{flex:1 1 240px;display:flex;flex-direction:column;gap:6px;align-self:flex-end}
+.r{text-align:right;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.l b{font-size:13px}
+.hn{display:flex;align-items:center;gap:4px;font-weight:800;font-size:18px}
+.hn input{width:90px;text-align:right;font-weight:800;font-size:18px}
+.wide{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px;border-top:2px solid var(--frame)}
+th,td{border:1px solid var(--line);padding:0}
+th{padding:6px 8px;font-size:15px}
+td.c{text-align:center;width:34px;font-size:13px}
+td.lab{padding:4px 8px;text-align:right;font-weight:600}
+td.t{text-align:right;padding:4px 8px;font-variant-numeric:tabular-nums;white-space:nowrap;width:130px}
+td.t.n{color:var(--neg)}
+td.np{width:34px;border:0;background:var(--bg)}
+input{text-transform:uppercase;width:100%;border:0;background:transparent;color:inherit;font:inherit;padding:5px 8px;border-radius:0}
+.head input{background:var(--field);border-radius:4px;border:1px solid var(--line)}
+td input:hover,td input:focus{background:var(--field)}
+td input[type=number]{text-align:center;-moz-appearance:textfield}
+input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+tr.sh td{background:var(--hi);color:#000;text-align:center;font-weight:600;padding:4px 8px}
+tr.sh td.sp{background:var(--paper)}
+.dw{display:flex;align-items:center;gap:6px;padding-right:6px}
+.dw input{flex:1;min-width:0}
+.seg{display:inline-flex;flex:none;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.sz{min-width:58px;padding:3px 8px;border-radius:0;background:transparent;color:var(--ink);font-size:13px;border:0;border-left:1px solid var(--line)}
+.sz:first-child{border-left:0}
+.sz.on{background:var(--btn);color:var(--btnt)}
+tr.qrow td{background:var(--field);padding:8px 10px;font-weight:600}
+tr.qrow td.c,tr.qrow td.np{background:var(--paper)}
+.sm{padding:4px 12px;margin-left:6px}
+.x{padding:2px 8px;background:transparent;color:var(--neg);font-size:18px;line-height:1}
+.lib{margin-top:14px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:10px 14px}
+.lib summary{cursor:pointer;font-weight:800}
+.lib textarea{width:100%;min-height:180px;margin-top:10px;padding:8px;font:inherit;text-transform:uppercase;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:6px;resize:vertical}
+.lib .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.lib small{opacity:.8}
+.add{display:flex;gap:8px;padding:10px 12px;flex-wrap:wrap}
+.gt{display:flex;justify-content:flex-end;align-items:center;gap:20px;border-top:2px solid var(--frame);padding:12px 20px;font-weight:800;font-size:18px}
+.gt span:last-child{min-width:140px;text-align:right;font-variant-numeric:tabular-nums}
+@media print{
+:root{--bg:#fff;--ink:#000}
+body{background:#fff}.bar,.add,.pmsg,.lib,.seg,tr.qrow,td.np,th.np,.x{display:none!important}
+.wrap{padding:0;max-width:none}.sheet{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.head input,td input{background:transparent!important;border:0}
+.wide{overflow:visible}table{min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <button class="alt" id="reset">New invoice</button>
+    <button id="print">Print / Save PDF</button>
+  </div>
+  <div id="pmsg" class="pmsg" hidden="">Printing is blocked inside this view. Open this page in your phone or computer browser (menu → Open in browser) and press Print again, or use the browser's own Share / Print option. The downloaded invoice.html file also prints normally.</div>
+  <div class="sheet">
+    <div class="head">
+      <div class="l">
+        <b>M/S:-</b>
+        <input id="name" placeholder="Name" aria-label="Name">
+        <input id="country" placeholder="Country (click to choose or type to search)" aria-label="Country" list="cl" autocomplete="off"><datalist id="cl"></datalist>
+      </div>
+      <div class="r">
+        <h1>INVOICE</h1>
+        <div class="hn"><span>#</span><input id="no" placeholder="117" aria-label="Invoice number" inputmode="numeric"></div>
+        <div><b>DATE :- <span id="date"></span></b></div>
+      </div>
+    </div>
+    <div class="wide">
+      <table>
+        <thead><tr><th class="c"></th><th>Description</th><th style="width:90px">QTY</th><th style="width:110px">Rate</th><th style="width:130px">TOTAL</th><th class="np"></th></tr></thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+    <div class="add">
+      <button id="addI">+ Add line</button>
+      <button class="alt" id="addB">+ Add box</button>
+      <button class="alt" id="addA">+ Add advance</button>
+    </div>
+    <div class="gt"><span>GRAND TOTAL</span><span id="grand"></span></div>
+  </div>
+  <details class="lib">
+    <summary>ITEM LIBRARY <small id="libn"></small></summary>
+    <p style="margin:8px 0 0"><small>To keep your library inside the file itself, press <b>Save library inside page file</b> and replace your old invoice.html with the new one. One item name per line. Edit freely, it saves automatically. When you type in an item name on the invoice, matching names from this list appear.</small></p>
+    <textarea id="libtxt" aria-label="Item library" placeholder="BASMATI RICE
+TURMERIC POWDER
+CUMIN SEEDS" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="libAdd">Add names from this invoice</button>
+      <button class="alt" id="libSort">Sort A-Z</button>
+      <button id="libSave">Save library inside page file</button>
+    </div>
+    <datalist id="il"></datalist>
+  </details>
+</div>
+<script type="application/json" id="libdata">["KD001\tGOL DRESS","KD002\tCOMBI DRESS","KD003\tSANDRA BUTTON DRESS","KD004\tJUNGLEE DRESS","KD005\tHIGH-LOW SET","KD006\tBUTTON DRESS","KD007\tPIPIN DRESS","KD008\tLONG DRESS","KD009\tCHULA DRESS","KD010\tSANDRA MONO","KD011\tTUTINI","KD012\tKURTA (3 BUTTON)","KD013\tSHIRT","KD014\tAFGHANI LYCRA TROUSER","KD015\tNATHAN TROUSER","KD016\tGENTS NATHAN TROUSER","KD017\tTIBET DRESS(WRAP)","KD018\tBOMBACHI","KD019\tUREBI BABY TOP","KD020\tGOL DRESS","KD021\tPARI DRESS","KD022\tSANDRA DRESS","KD023\tNEW JUMPSUIT","KD024\tNEW BOMBACHI","KD025\tLACE TROUSER","KD026\tMOON DRESS","KD027\tFRILL TOP","KD028\tRAMA DRESS","KD029\tANA DRESS"]</script>
+<script>
+var S={items:[{d:"",q:"",r:""}],boxes:[],advs:[]};
+var $=function(i){return document.getElementById(i)};
+var esc=function(s){return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;")};
+var n=function(v){return parseFloat(v)||0};
+var fmt=function(v){return "\u20B9 "+v.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})};
+var now=new Date();
+$("date").textContent=now.getDate()+"-"+(now.getMonth()+1)+"-"+now.getFullYear();
+
+function inp(k,i,f,v,t,ph){
+  return '<input data-k="'+k+'" data-i="'+i+'" data-f="'+f+'" value="'+esc(v)+'"'+
+    (t?' type="number" step="any" inputmode="decimal"':'')+(ph?' placeholder="'+ph+'"':'')+(k==="items"&&f==="d"?' list="il" autocomplete="off"':'')+'>';
+}
+function stripSize(s){return String(s).trim().replace(/\s+(S\/M\/L|XL\/XXL|3XL|XXL|XL|S|M|L)$/i,"").trim()}
+var SZ={a:["S","M","L","S/M/L"],b:["XL","XXL","XL/XXL"]};
+function seg(i,x){
+  var G=[["a",SZ.a,"S/M/L"],["b",SZ.b,"XL/XXL"]];
+  return '<span class="seg" role="group" aria-label="Size">'+G.map(function(g){
+    var on=g[1].indexOf(x.sz)>-1;
+    return '<button type="button" class="sz'+(on?' on':'')+'" data-g="'+g[0]+'" data-i="'+i+'" aria-pressed="'+on+'" title="Click to change size">'+(on?x.sz:g[2])+'</button>'}).join("")+'</span>';
+}
+function del(k,i){return '<td class="np"><button class="x" data-del="'+k+'" data-i="'+i+'" aria-label="Remove">\u00D7</button></td>'}
+
+function render(){
+  var h="";
+  S.items.forEach(function(x,i){
+    h+='<tr data-k="items" data-i="'+i+'"><td class="c">'+(i+1)+'</td><td><div class="dw">'+inp("items",i,"d",x.d,0,"Item name")+seg(i,x)+
+       '</div></td><td>'+inp("items",i,"q",x.q,1)+'</td><td>'+inp("items",i,"r",x.r,1)+'</td><td class="t"></td>'+del("items",i)+'</tr>';
+    if(x.ask3)h+='<tr class="qrow"><td class="c"></td><td colspan="4">Do you have 3XL as well in this item?'+
+       '<button type="button" class="sm" data-q="y3" data-i="'+i+'">Yes</button>'+
+       '<button type="button" class="sm alt" data-q="n3" data-i="'+i+'">No</button></td><td class="np"></td></tr>';
+    else if(x.ask)h+='<tr class="qrow"><td class="c"></td><td colspan="4">Do you have XL / XXL as well in this item?'+
+       '<button type="button" class="sm" data-q="yes" data-i="'+i+'">Yes</button>'+
+       '<button type="button" class="sm alt" data-q="no" data-i="'+i+'">No</button></td><td class="np"></td></tr>';
+  });
+  if(S.boxes.length||S.advs.length){
+    h+='<tr class="sh"><td class="c sp"></td><td class="sp" style="text-align:right">SHIPPING</td><td>KG</td><td>PRICE</td><td class="sp"></td><td class="np"></td></tr>';
+  }
+  S.boxes.forEach(function(x,i){
+    h+='<tr data-k="boxes" data-i="'+i+'"><td class="c"></td><td class="lab" style="text-align:left">BOX '+(i+1)+'</td><td>'+
+       inp("boxes",i,"kg",x.kg,1)+'</td><td>'+inp("boxes",i,"r",x.r,1)+'</td><td class="t"></td>'+del("boxes",i)+'</tr>';
+  });
+  S.advs.forEach(function(x,i){
+    h+='<tr data-k="advs" data-i="'+i+'"><td class="c"></td><td class="lab">(-ADVANCE) '+(i+1)+'</td><td></td><td>'+
+       inp("advs",i,"a",x.a,1)+'</td><td class="t n"></td>'+del("advs",i)+'</tr>';
+  });
+  $("body").innerHTML=h;
+  calc();
+}
+
+function calc(){
+  var g=0;
+  document.querySelectorAll("#body tr[data-k]").forEach(function(tr){
+    var k=tr.dataset.k,x=S[k][+tr.dataset.i],v=0;
+    if(k==="items")v=n(x.q)*n(x.r);
+    else if(k==="boxes")v=n(x.kg)*n(x.r);
+    else v=-Math.abs(n(x.a));
+    g+=v;
+    tr.querySelector(".t").textContent=(v===0&&k!=="advs")?fmt(0):fmt(v);
+  });
+  $("grand").textContent=fmt(g);
+}
+
+$("body").addEventListener("input",function(e){
+  var t=e.target;
+  if(!t.dataset.k)return;
+  S[t.dataset.k][+t.dataset.i][t.dataset.f]=t.value;
+  calc();
+});
+$("body").addEventListener("click",function(e){
+  var b=e.target.closest("[data-del]"),i,x;
+  if(b){
+    S[b.dataset.del].splice(+b.dataset.i,1);
+    if(!S.items.length)S.items.push({d:"",q:"",r:""});
+    render();return;
+  }
+  b=e.target.closest("[data-g]");
+  if(b){
+    i=+b.dataset.i;x=S.items[i];
+    var base=stripSize(x.d);
+    if(!base){var f=document.querySelector('input[data-k="items"][data-i="'+i+'"][data-f="d"]');if(f)f.focus();return}
+    var z=SZ[b.dataset.g];
+    var nx=z[(z.indexOf(x.sz)+1)%z.length];
+    x.d=base+" "+nx;x.sz=nx;
+    if(b.dataset.g==="a"){x.ask3=false;if(!x.done&&!x.xl)x.ask=true}
+    else{x.ask=false;x.done=true;if(!x.done3&&!x.x3)x.ask3=true}
+    render();return;
+  }
+  b=e.target.closest("[data-q]");
+  if(b){
+    i=+b.dataset.i;x=S.items[i];
+    if(b.dataset.q==="y3"||b.dataset.q==="n3"){
+      x.ask3=false;x.done3=true;
+      if(b.dataset.q==="y3"){
+        S.items.splice(i+1,0,{d:stripSize(x.d)+" 3XL",q:"",r:"",sz:"3XL",x3:true,done:true,done3:true});
+        render();
+        var q3=document.querySelector('input[data-k="items"][data-i="'+(i+1)+'"][data-f="q"]');if(q3)q3.focus();
+      }else render();
+      return;
+    }
+    x.ask=false;x.done=true;
+    if(b.dataset.q==="yes"){
+      S.items.splice(i+1,0,{d:stripSize(x.d)+" XL",q:"",r:"",sz:"XL",xl:true,done:true});
+      render();
+      var q=document.querySelector('input[data-k="items"][data-i="'+(i+1)+'"][data-f="q"]');if(q)q.focus();
+    }else render();
+  }
+});
+function focusLast(sel){var l=document.querySelectorAll(sel);if(l.length)l[l.length-1].focus()}
+$("addI").onclick=function(){S.items.push({d:"",q:"",r:""});render();focusLast('input[data-k="items"][data-f="d"]')};
+$("addB").onclick=function(){S.boxes.push({kg:"",r:""});render();focusLast('input[data-k="boxes"][data-f="kg"]')};
+$("addA").onclick=function(){S.advs.push({a:""});render();focusLast('input[data-k="advs"]')};
+$("print").onclick=function(){
+  var fired=false,h=function(){fired=true};
+  window.addEventListener("beforeprint",h);
+  try{window.print()}catch(e){}
+  setTimeout(function(){
+    window.removeEventListener("beforeprint",h);
+    if(!fired)$("pmsg").hidden=false;
+  },700);
+};
+var armed=false;
+$("reset").onclick=function(){
+  var b=$("reset");
+  if(!armed){armed=true;b.textContent="Click again to clear";setTimeout(function(){armed=false;b.textContent="New invoice"},3000);return}
+  armed=false;b.textContent="New invoice";
+  S={items:[{d:"",q:"",r:""}],boxes:[],advs:[]};
+  ["name","country","no"].forEach(function(i){$(i).value=""});
+  render();
+};
+var CL="Afghanistan|Albania|Algeria|Andorra|Angola|Antigua and Barbuda|Argentina|Armenia|Australia|Austria|Azerbaijan|Bahamas|Bahrain|Bangladesh|Barbados|Belarus|Belgium|Belize|Benin|Bhutan|Bolivia|Bosnia and Herzegovina|Botswana|Brazil|Brunei|Bulgaria|Burkina Faso|Burundi|Cabo Verde|Cambodia|Cameroon|Canada|Central African Republic|Chad|Chile|China|Colombia|Comoros|Congo|Costa Rica|Cote d'Ivoire|Croatia|Cuba|Cyprus|Czech Republic|DR Congo|Denmark|Djibouti|Dominica|Dominican Republic|Ecuador|Egypt|El Salvador|Equatorial Guinea|Eritrea|Estonia|Eswatini|Ethiopia|Fiji|Finland|France|Gabon|Gambia|Georgia|Germany|Ghana|Greece|Grenada|Guatemala|Guinea|Guinea-Bissau|Guyana|Haiti|Honduras|Hong Kong|Hungary|Iceland|India|Indonesia|Iran|Iraq|Ireland|Israel|Italy|Jamaica|Japan|Jordan|Kazakhstan|Kenya|Kiribati|Kosovo|Kuwait|Kyrgyzstan|Laos|Latvia|Lebanon|Lesotho|Liberia|Libya|Liechtenstein|Lithuania|Luxembourg|Madagascar|Malawi|Malaysia|Maldives|Mali|Malta|Marshall Islands|Mauritania|Mauritius|Mexico|Micronesia|Moldova|Monaco|Mongolia|Montenegro|Morocco|Mozambique|Myanmar|Namibia|Nauru|Nepal|Netherlands|New Zealand|Nicaragua|Niger|Nigeria|North Korea|North Macedonia|Norway|Oman|Pakistan|Palau|Palestine|Panama|Papua New Guinea|Paraguay|Peru|Philippines|Poland|Portugal|Qatar|Romania|Russia|Rwanda|Saint Kitts and Nevis|Saint Lucia|Saint Vincent and the Grenadines|Samoa|San Marino|Sao Tome and Principe|Saudi Arabia|Senegal|Serbia|Seychelles|Sierra Leone|Singapore|Slovakia|Slovenia|Solomon Islands|Somalia|South Africa|South Korea|South Sudan|Spain|Sri Lanka|Sudan|Suriname|Sweden|Switzerland|Syria|Taiwan|Tajikistan|Tanzania|Thailand|Timor-Leste|Togo|Tonga|Trinidad and Tobago|Tunisia|Turkey|Turkmenistan|Tuvalu|UAE|Uganda|Ukraine|United Kingdom|United States|Uruguay|Uzbekistan|Vanuatu|Vatican City|Venezuela|Vietnam|Yemen|Zambia|Zimbabwe".split("|");
+$("cl").innerHTML=CL.map(function(x){return '<option value="'+x.toUpperCase().replace(/"/g,"&quot;")+'">'}).join("");
+document.addEventListener("input",function(e){
+  var t=e.target;
+  if(!(t.tagName==="TEXTAREA"||(t.tagName==="INPUT"&&(!t.type||t.type==="text"))))return;
+  var a=t.selectionStart,b=t.selectionEnd,u=t.value.toUpperCase();
+  if(u!==t.value){t.value=u;try{t.setSelectionRange(a,b)}catch(x){}}
+},true);
+var LK="inv_items_v1",store=true,dbRef=null,cloudErr=false,cTimer=null;
+function getLib(){try{return localStorage.getItem(LK)||""}catch(e){store=false;return ""}}
+function setLib(v){try{localStorage.setItem(LK,v)}catch(e){store=false}}
+function libItems(){var s={},o=[];$("libtxt").value.split("\n").forEach(function(l){l=l.trim().toUpperCase();if(l&&!s[l]){s[l]=1;o.push(l)}});return o}
+function libSync(){
+  var it=libItems();
+  $("il").innerHTML=it.map(function(x){return '<option value="'+esc(x)+'">'}).join("");
+  var st=(dbRef&&!cloudErr)?"saved permanently online":(store?"saved on this device only":"cannot save here - copy the list to keep it");
+  $("libn").textContent="("+it.length+" items, "+st+")";
+}
+function cloudSave(v){
+  if(!dbRef)return;
+  clearTimeout(cTimer);
+  cTimer=setTimeout(function(){
+    dbRef.set({text:v}).then(function(){cloudErr=false;libSync()}).catch(function(){cloudErr=true;libSync()});
+  },500);
+}
+function persist(){var v=$("libtxt").value;setLib(v);cloudSave(v);libSync()}
+function unionText(a,b){
+  var s={},o=[];(a+"\n"+b).split("\n").forEach(function(l){l=l.trim().toUpperCase();if(l&&!s[l]){s[l]=1;o.push(l)}});
+  return o.join("\n");
+}
+function libSet(a){$("libtxt").value=a.join("\n");persist()}
+function embedded(){try{return JSON.parse($("libdata").textContent)||[]}catch(e){return []}}
+$("libtxt").value=unionText(embedded().join("\n"),getLib());
+$("libtxt").addEventListener("input",persist);
+$("libAdd").onclick=function(){
+  var c=libItems();
+  S.items.forEach(function(x){var d=stripSize(x.d).toUpperCase();if(d&&c.indexOf(d)<0)c.push(d)});
+  libSet(c);
+};
+function buildHtml(){
+  var c=document.documentElement.cloneNode(true);
+  c.querySelector("#body").innerHTML="";
+  c.querySelector("#libtxt").textContent="";
+  ["il","cl","libn","date","grand"].forEach(function(id){c.querySelector("#"+id).textContent=""});
+  c.querySelector("#pmsg").setAttribute("hidden","");
+  c.querySelector("#reset").textContent="New invoice";
+  var d=c.querySelector("details");if(d)d.removeAttribute("open");
+  c.querySelector("#libdata").textContent=JSON.stringify(libItems()).replace(/</g,"\\u003c");
+  return "<!DOCTYPE html>\n"+c.outerHTML;
+}
+$("libSave").onclick=async function(){
+  var html=buildHtml(),done=false;
+  try{
+    if(window.claude&&window.claude.use){
+      var dl=await window.claude.use("downloads");
+      if(dl){await dl.save({filename:"invoice.html",data:html});done=true}
+    }
+  }catch(e){done=true;if(!e||e.code!=="declined")alert("Could not save the file here. Open the page in your browser and try again.");}
+  if(!done){
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([html],{type:"text/html"}));
+    a.download="invoice.html";document.body.appendChild(a);a.click();a.remove();
+  }
+};
+$("libSort").onclick=function(){libSet(libItems().sort())};
+libSync();
+(async function(){
+  try{
+    if(!window.claude||!window.claude.use)return;
+    var db=await window.claude.use("db");
+    if(!db)return;
+    var ref=db.doc("library/items"),first=true;
+    ref.onSnapshot(function(snap){
+      var d=snap.exists?snap.data():null,box=$("libtxt");
+      if(first){
+        first=false;dbRef=ref;
+        var local=box.value;
+        if(d&&typeof d.text==="string"){
+          var m=unionText(d.text,local);
+          box.value=m;setLib(m);
+          if(m!==d.text)cloudSave(m);
+        }else if(local.trim()){cloudSave(local)}
+      }else if(d&&typeof d.text==="string"&&document.activeElement!==box&&box.value!==d.text){
+        box.value=d.text;setLib(d.text);
+      }
+      libSync();
+    },function(){});
+  }catch(e){}
+})();
+render();
+</script>
+
+
+</body></html>
