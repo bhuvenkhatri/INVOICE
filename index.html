@@ -1,7 +1,1160 @@
 <!DOCTYPE html>
-<html lang="en"><head><style>body {transition: opacity ease-in 0.2s; } 
-body[unresolved] {opacity: 0; display: block; overflow: hidden; position: relative; } 
-</style>
+<html lang="en"><head>
+    <script>
+      (function() {
+        // Capture host references before any artifact code runs: Window.parent
+        // is [Replaceable] (a top-level `var parent` in artifact code would
+        // replace the accessor with a data property), and a top-level
+        // `const crypto` would shadow the global — either would otherwise
+        // silently break the bridge for artifacts that worked before.
+        const realParent = window.parent;
+        const cryptoObj = window.crypto;
+        const RealURL = URL;
+        const realDecodeURIComponent = decodeURIComponent;
+        const RealTextEncoder = TextEncoder;
+        const realAtob = atob;
+        // html-to-image is only used by takeScreenshot: fetched on first use, not as a
+        // parser-blocking tag. Native fetch, captured before the proxy override below.
+        const realFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
+        const HTML_TO_IMAGE_SRC = "https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.13/html-to-image.min.js";
+        const HTML_TO_IMAGE_INTEGRITY = "sha512-iZ2ORl595Wx6miw+GuadDet4WQbdSWS3JLMoNfY8cRGoEFy6oT3G9IbcrBeL6AfkgpA51ETt/faX6yLV+/gFJg==";
+        let htmlToImageLoad = null;
+        const loadHtmlToImage = () => {
+          if (!htmlToImageLoad) {
+            htmlToImageLoad = (realFetch
+              ? realFetch(HTML_TO_IMAGE_SRC, { integrity: HTML_TO_IMAGE_INTEGRITY, credentials: 'omit', referrerPolicy: 'no-referrer' })
+              : Promise.reject(new Error('fetch unavailable'))
+            )
+              .then((res) => {
+                if (!res.ok) throw new Error('html-to-image failed to load (' + res.status + ')');
+                return res.text();
+              })
+              .then((source) => {
+                // UMD bundle: hide the artifact's AMD/CommonJS globals so it takes the
+                // window-global branch; inline script text runs synchronously on insert.
+                const hidden = ['define', 'module', 'exports'].map((k) => {
+                  const entry = { k, own: Object.prototype.hasOwnProperty.call(window, k), v: window[k] };
+                  try { window[k] = undefined; } catch (e) {}
+                  return entry;
+                });
+                try {
+                  const el = document.createElement('script');
+                  el.text = source;
+                  (document.head || document.documentElement).appendChild(el);
+                } finally {
+                  hidden.forEach(({ k, own, v }) => {
+                    try { if (own) { window[k] = v; } else { delete window[k]; } } catch (e) {}
+                  });
+                }
+                if (!window.htmlToImage) throw new Error('html-to-image unavailable after load');
+                return window.htmlToImage;
+              });
+            // A failed load may be transient; let the next screenshot retry.
+            htmlToImageLoad.catch(() => { htmlToImageLoad = null; });
+          }
+          return htmlToImageLoad;
+        };
+        // crypto.randomUUID exists only in Secure Contexts; fall back to a
+        // unique non-crypto id elsewhere (http://LAN-IP dev flows) —
+        // uniqueness is what the bridge needs, unpredictability is
+        // defense-in-depth on top of the source guards.
+        const newRequestId =
+          cryptoObj && typeof cryptoObj.randomUUID === "function"
+            ? function () { return cryptoObj.randomUUID(); }
+            : function () { return Date.now() + "-" + Math.random(); };
+        const originalConsole = window.console;
+        window.console = {
+          log: (...args) => {
+            originalConsole.log(...args);
+            realParent.postMessage({ type: 'console', message: args.join(' ') }, '*');
+          },
+          error: (...args) => {
+            originalConsole.error(...args);
+            realParent.postMessage({ type: 'console', message: 'Error: ' + args.join(' ') }, '*');
+          },
+          warn: (...args) => {
+            originalConsole.warn(...args);
+            realParent.postMessage({ type: 'console', message: 'Warning: ' + args.join(' ') }, '*');
+          }
+        };
+
+        // Bridge request ids are crypto-random (not sequential) so they
+        // cannot be predicted by other frames in the tab.
+        let callbacksMap = new Map();
+        let streamControllers = new Map();
+        
+        window.claude = {
+          complete: (prompt) => {
+            return new Promise((resolve, reject) => {
+              const id = newRequestId();
+              callbacksMap.set(id, { resolve, reject });
+              realParent.postMessage({ type: 'claudeComplete', id, prompt }, '*');
+            });
+          }
+        };
+
+        window.storage = {
+          get: (key, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = newRequestId();
+              callbacksMap.set(id, { resolve, reject });
+              realParent.postMessage({ type: 'storageGet', id, key, shared }, '*');
+            });
+          },
+          set: (key, value, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = newRequestId();
+              callbacksMap.set(id, { resolve, reject });
+              realParent.postMessage({ type: 'storageSet', id, key, value, shared }, '*');
+            });
+          },
+          delete: (key, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = newRequestId();
+              callbacksMap.set(id, { resolve, reject });
+              realParent.postMessage({ type: 'storageDelete', id, key, shared }, '*');
+            });
+          },
+          list: (prefix, shared = false) => {
+            return new Promise((resolve, reject) => {
+              const id = newRequestId();
+              callbacksMap.set(id, { resolve, reject });
+              realParent.postMessage({ type: 'storageList', id, prefix, shared }, '*');
+            });
+          }
+        };
+
+        let pendingBlobs = new Map();
+        URL.createObjectURL = (blob) => {
+          // Store the blob and create an ID and URL for it
+          const blobId = `blob-${Date.now()}-${Math.random()}`;
+          pendingBlobs.set(blobId, blob);
+          return `blob-request://${blobId}`;
+        };
+
+        URL.revokeObjectURL = (url) => {
+          // Remove the blob from our store
+          const blobId = url.replace("blob-request://", "");
+          pendingBlobs.delete(blobId);
+        };
+
+        const getBlobFromURL = (url) => {
+          const blobId = url.replace("blob-request://", "");
+          return pendingBlobs.get(blobId);
+        };
+
+        // Override global fetch with streaming support
+        window.fetch = (url, init = {}) => {
+          return new Promise((resolve, reject) => {
+            const id = newRequestId();
+            const channelId = `fetch-${id}-${Date.now()}`;
+            
+            callbacksMap.set(id, { 
+              resolve: (response) => {
+                // Null-body statuses: Response(stream, {status: 204}) throws
+                // per the Fetch spec, which would escape this resolver and
+                // hang the artifact's await forever.
+                if (response.status === 204 || response.status === 205 || response.status === 304) {
+                  try {
+                    resolve(new Response(null, {
+                      status: response.status,
+                      statusText: response.statusText,
+                      headers: response.headers
+                    }));
+                  } catch (err) {
+                    // Invalid statusText/header bytes can throw here too.
+                    reject(new TypeError(
+                      'Bridge fetch: unconstructable response (status ' + response.status + ')'
+                    ));
+                  }
+                  return;
+                }
+                // Create a ReadableStream for the response body
+                const stream = new ReadableStream({
+                  start(controller) {
+                    streamControllers.set(channelId, controller);
+                  },
+                  cancel() {
+                    streamControllers.delete(channelId);
+                  }
+                });
+                
+                // Create and return the Response with the stream. Response()
+                // requires status in [200, 599]; an opaque/no-cors fetch
+                // forwards status 0, which would throw here and escape the
+                // resolver, hanging the artifact's await. Surface it as a
+                // network-error-shaped rejection instead.
+                try {
+                  resolve(new Response(stream, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: response.headers
+                  }));
+                } catch (err) {
+                  streamControllers.delete(channelId);
+                  reject(new TypeError(
+                    'Bridge fetch: unconstructable response (status ' + response.status + ')'
+                  ));
+                }
+              },
+              reject,
+              channelId
+            });
+            
+            realParent.postMessage({
+              type: 'proxyFetch',
+              id,
+              url,
+              init,
+              channelId
+            }, '*');
+          });
+        };
+
+        window.addEventListener('message', async (event) => {
+          // Only the embedding parent may drive the bridge — sibling and
+          // nested frames can also postMessage into this window.
+          if (event.source !== realParent) return;
+          if (event.data.type === 'takeScreenshot') {
+            // Echo the request's nonce so the requester can correlate the
+            // reply to ITS request — a reply without the expected nonce
+            // (e.g. from a stale pre-remount artifact) is ignored upstream.
+            const screenshotNonce = event.data.nonce;
+            const rootElement = document.getElementById('artifacts-component-root-html');
+            if (!rootElement) {
+              realParent.postMessage({
+                type: 'screenshotError',
+                nonce: screenshotNonce,
+                error: new Error('Root element not found'),
+              }, '*');
+              return;
+            }
+            // Catch CDN load failures and toPng errors so the parent always
+            // gets a response instead of hanging forever.
+            try {
+              const htmlToImage = await loadHtmlToImage();
+              const screenshot = await htmlToImage.toPng(rootElement, {
+                imagePlaceholder:
+                  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjePDgwX8ACOQDoNsk0PMAAAAASUVORK5CYII=",
+              });
+              realParent.postMessage({
+                type: 'screenshotData',
+                nonce: screenshotNonce,
+                data: screenshot,
+              }, '*');
+            } catch (err) {
+              realParent.postMessage({
+                type: 'screenshotError',
+                nonce: screenshotNonce,
+                error: err instanceof Error ? err : new Error(String(err)),
+              }, '*');
+            }
+          } else if (event.data.type === 'claudeComplete') {
+            const callback = callbacksMap.get(event.data.id);
+            if (!callback) return;
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.completion);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'proxyFetchResponse') {
+            const callback = callbacksMap.get(event.data.id);
+            if (!callback) return;
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+              callbacksMap.delete(event.data.id);
+            } else {
+              // Initial response with headers, status, etc.
+              callback.resolve({
+                status: event.data.status,
+                statusText: event.data.statusText,
+                headers: event.data.headers
+              });
+              // Don't delete the callback yet if streaming
+              if (!event.data.body) {
+                callbacksMap.delete(event.data.id);
+              }
+            }
+          } else if (event.data.type === 'proxyFetchStream') {
+            // Handle streaming data chunks
+            const controller = streamControllers.get(event.data.channelId);
+            if (controller) {
+              if (event.data.error) {
+                controller.error(new Error(event.data.error));
+                streamControllers.delete(event.data.channelId);
+              } else if (event.data.done) {
+                controller.close();
+                streamControllers.delete(event.data.channelId);
+                // Clean up the callback
+                const callback = Array.from(callbacksMap.entries()).find(
+                  ([_, value]) => value.channelId === event.data.channelId
+                );
+                if (callback) {
+                  callbacksMap.delete(callback[0]);
+                }
+              } else if (event.data.chunk) {
+                controller.enqueue(new Uint8Array(event.data.chunk));
+              }
+            }
+          } else if (event.data.type === 'storageGet') {
+            const callback = callbacksMap.get(event.data.id);
+            if (!callback) return;
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageSet') {
+            const callback = callbacksMap.get(event.data.id);
+            if (!callback) return;
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageDelete') {
+            const callback = callbacksMap.get(event.data.id);
+            if (!callback) return;
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          } else if (event.data.type === 'storageList') {
+            const callback = callbacksMap.get(event.data.id);
+            if (!callback) return;
+            if (event.data.error) {
+              callback.reject(new Error(event.data.error));
+            } else {
+              callback.resolve(event.data.result);
+            }
+            callbacksMap.delete(event.data.id);
+          }
+        });
+
+        // An SVG <a> exposes href as an SVGAnimatedString; its baseVal is the attribute
+        // as written, so resolve it against the base URL as the browser does for an HTML <a>.
+        const resolvedHref = (linkEl) => {
+          if (typeof linkEl.href === "string") return linkEl.href;
+          const written = linkEl.href?.baseVal;
+          // A same-document SVG link, such as one that begins an animation, stays with the browser.
+          if (!written || written.trim().startsWith("#")) return "";
+          try {
+            return new RealURL(written, linkEl.baseURI).href;
+          } catch (error) {
+            return written;
+          }
+        };
+
+        // This frame's URL is about:srcdoc, so the browser resolves "#id" against the renderer
+        // page and would load that page in the frame instead of scrolling.
+        const sameDocumentFragment = (linkEl) => {
+          const written = linkEl.getAttribute("href")?.trim();
+          if (!written?.startsWith("#") || document.querySelector("base[href]")) return null;
+          return written.slice(1);
+        };
+
+        const scrollToFragment = (fragment) => {
+          let decoded = fragment;
+          try {
+            decoded = realDecodeURIComponent(fragment);
+          } catch (error) {}
+          let target = document.getElementById(fragment) ?? document.getElementById(decoded);
+          for (const named of target ? [] : document.getElementsByName(decoded)) {
+            if (named.localName === "a") {
+              target = named;
+              break;
+            }
+          }
+          if (target) {
+            target.scrollIntoView();
+          } else if (decoded.toLowerCase() === "top") {
+            window.scrollTo(0, 0);
+          } else {
+            return false;
+          }
+          return true;
+        };
+
+        // Same decoder as dataUrlFile in app/page.tsx; change both together.
+        const hexPair = /^[0-9a-f]{2}$/i;
+        const dataUrlFile = (href) => {
+          const hash = href.indexOf("#");
+          const url = hash === -1 ? href : href.slice(0, hash);
+          const comma = url.indexOf(",");
+          if (comma === -1) return null;
+          const header = url.slice(0, comma);
+          const payload = url.slice(comma + 1);
+          const mimeMatch = header.match(/data:([^;]+)/);
+          const mimeType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+          const declaredBase64 = header
+            .split(";")
+            .slice(1)
+            .some((param) => param.trim().toLowerCase() === "base64");
+          const type = mimeMatch ? mimeMatch[1].trim().toLowerCase() : "";
+          const binaryType = type !== "" && !type.startsWith("text/");
+          if (declaredBase64 || (binaryType && !payload.includes("%"))) {
+            let binary = null;
+            try {
+              binary = realAtob(
+                payload.replace(/%([0-9a-f]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))),
+              );
+            } catch (error) {
+              if (declaredBase64) return null;
+            }
+            if (binary !== null) {
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+              }
+              return { mimeType, data: bytes.buffer };
+            }
+          }
+          const input = new RealTextEncoder().encode(payload);
+          const bytes = new Uint8Array(input.length);
+          let length = 0;
+          for (let i = 0; i < input.length; i++) {
+            if (input[i] === 0x25 && i + 2 < input.length) {
+              const pair = String.fromCharCode(input[i + 1], input[i + 2]);
+              if (hexPair.test(pair)) {
+                bytes[length++] = parseInt(pair, 16);
+                i += 2;
+                continue;
+              }
+            }
+            bytes[length++] = input[i];
+          }
+          return { mimeType, data: bytes.slice(0, length).buffer };
+        };
+
+        window.addEventListener('click', (event) => {
+          // Not instanceof Element: an artifact's own top-level class Element shadows the global.
+          if (typeof event.target?.closest !== "function") return;
+    
+          const linkEl = event.target.closest("a");
+          const href = linkEl && resolvedHref(linkEl);
+          if (!href) return;
+
+          const fragment = sameDocumentFragment(linkEl);
+          if (fragment !== null) {
+            const handledByArtifact = event.defaultPrevented;
+            event.preventDefault();
+            if (handledByArtifact || fragment === "" || scrollToFragment(fragment)) return;
+            // A fragment that names nothing in the artifact may name something in the host,
+            // such as a project thread. The artifact's own listeners still see the click.
+            realParent.postMessage({ type: 'openExternal', href }, '*');
+            return;
+          }
+          const filename = linkEl.getAttribute("download") ?? "";
+    
+          event.preventDefault();
+          event.stopImmediatePropagation();
+    
+          if (href.startsWith("blob-request:")) {
+            const blob = getBlobFromURL(href);
+            if (!blob) return;
+            void blob.arrayBuffer().then((data) => {
+              realParent.postMessage({
+                type: "downloadFile",
+                filename,
+                data,
+                mimeType: blob.type || "application/octet-stream",
+              });
+            });
+          } else if (href.startsWith("data:")) {
+            const file = dataUrlFile(href);
+            if (!file) return;
+            realParent.postMessage({
+              type: "downloadFile",
+              filename,
+              data: file.data,
+              mimeType: file.mimeType,
+            });
+          } else {
+            let linkUrl;
+            try {
+              linkUrl = new URL(href);
+            } catch (error) {
+              return;
+            }
+    
+            if (linkUrl.hostname === window.location.hostname) return;
+      
+            realParent.postMessage({
+              type: 'openExternal',
+              href,
+            }, '*');
+          }
+      });
+
+        const originalOpen = window.open;
+        window.open = function (url) {
+          realParent.postMessage({
+            type: "openExternal",
+            href: url,
+          }, "*");
+        };
+
+        window.addEventListener('error', (event) => {
+          realParent.postMessage({ type: 'console', message: 'Uncaught Error: ' + event.message }, '*');
+        });
+      })();
+    </script>
+  <style id="claude-scrollbar">@layer claude-scrollbar{*{scrollbar-width:thin}html{scrollbar-color:rgb(128 128 128 / 50%) transparent}}</style><script>
+(function () {
+  "use strict";
+  if (window.__coworkHtmlReviewGuest) return;
+  window.__coworkHtmlReviewGuest = true;
+
+  var READY_TYPE = "__cowork_html_review_ready__";
+  var SEL_CLASS = "__cwhr-sel";
+  var CONTEXT_LEN = 32;
+  var EXACT_CAP = 1000;
+  var port = null;
+  var mode = false;
+  var pins = [];
+  var quotes = [];
+  // Resolved Range per quote id; invalidated on DOM mutation and on a
+  // fresh quotes set. Scroll/resize re-reports just re-read
+  // getClientRects() from the cached Range. Null prototype - ids are
+  // collaborator-writable and must not collide with Object.prototype.
+  var quoteRanges = Object.create(null);
+  var hoverEl = null;
+  var selected = null;
+  var hasTextSel = false;
+  var rafPending = false;
+  // Capture before page body scripts can shadow them; start() defers
+  // to DOMContentLoaded which page code can race.
+  var _MessageChannel = window.MessageChannel;
+  var _topPost = window.top.postMessage.bind(window.top);
+
+  function visibleText(el) {
+    // innerText drops display:none/visibility:hidden subtrees; keep an
+    // empty innerText (icon-only el) rather than falling through to
+    // textContent which would re-include hidden text.
+    var t = typeof el.innerText === "string" ? el.innerText : (el.textContent || "");
+    return t.replace(/\s+/g, " ").trim();
+  }
+
+  // Comment-mode cursor: the comment bubble itself (a 24px white teardrop,
+  // tail tip bottom-left = the hotspot), drawn by the browser so it has no
+  // lag; the host paints only the inspector box and, on click, the pin.
+  // Same glyph as the host's pins (size-6 rounded-full rounded-bl-[2px]);
+  // cursor images take no CSS shadow, so a slightly stronger 1px ring
+  // stands in for ring + shadow. SVG first (rasterised at device scale
+  // where supported), the same glyph as a 24px PNG for engines without
+  // SVG cursors (WebKit), then the arrow.
+  var BUBBLE_SVG =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>" +
+    "<path d='M12 .5h0A11.5 11.5 0 0 1 23.5 12v0A11.5 11.5 0 0 1 12 23.5H2.5a2 2 0 0 1-2-2V12A11.5 11.5 0 0 1 12 .5Z' fill='#fff' stroke='rgba(0,0,0,0.22)' stroke-width='1'/>" +
+    "</svg>";
+  var BUBBLE_PNG =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAACjklEQVR4AbRWS2gaURR9TGpiFTUEWpKQkA+EruqizWcRSBRT/G8KKpXiyo0ra1fVNiDFLmypFUo3iht/iO4Uay1FGwtFECl1p6KWLly4CGqrSMTY+wRFQ7WhGYd7Zu697845b+7M8B6BJh+UxcXFG3a7XeTxeHQAC+C12+1+ZLPZhHgMbp8FjLWxAkaj8U48Hg8lEomfIpEoLBaLLTKZTAd4LJFI3kD8HsZ+xGKxoMFgYI9T+JvAtUAg8FylUn3hcDj8ra0t6vLyMmKxWIhCofSAfZyDMRqXy+Wr1eqvPp/vKYjMAEZsRMDpdN6MRCKf+Xz+8cbGBm2kckIAtXShUGgKh8Mnfr9/Ybh0IKDT6a4vLS19EggE+wwGY7jmUj6TyUTQyv35+fmP0MbBexkISKVS+97e3u1LsU0oAo67Go3G1i/pCZjN5t3Nzc0H/zPzPlH/ip8EWvbQYrHs4hwWmN3e3n62traGfZy7MtbX12fYbPYTIKIQOzs7C6urq/cgINVWVlaO4EtjEXq9nken06mksgMZtJthtVp5xNzcHBsEIEWu0Wg0RKVS2USz2WTigFx6hPCkMTfRarXgB6WQzd/j63Q6bdK+nB7j0KnRaCCCIMpTE4D2oEql8m1qAvV6/VSr1U5PIJvN+qFjv6fyBIVC4ZfD4XgJAmekC9RqNZROp1+FQqESCCDSBWCVO1EoFC8wOQZpAnjm0Wj0O/xX94H4HNAzotvtNnreFU6lUgllMplAMpnclcvlp8NURC6Xi8BLGc5N9NvtNqpWq6hcLqN8Pn8OLUkAMe/g4EAOG4WzizcTJpPpA6zFIpfL9Ra2I45/IRgM2lKp1LtisXjs9XpvHR4eHimVythF4n78BwAA//8r8OPFAAAABklEQVQDAPCY8Oae0TJxAAAAAElFTkSuQmCC";
+  var BUBBLE_CURSOR =
+    "url(\"data:image/svg+xml," + encodeURIComponent(BUBBLE_SVG) + "\") 1 23, " +
+    "url(\"" + BUBBLE_PNG + "\") 1 23, default";
+
+  function injectStyle() {
+    var style = document.createElement("style");
+    // Hover box is painted by the host (from streamed rects); the guest
+    // marks the selected element and, in comment mode, swaps the native
+    // cursor for the comment bubble (forced, so page cursor styles don't
+    // fight the picker). While a composer or thread card is open the arrow
+    // returns, so the bubble cursor and the pin just placed never show at
+    // once. Keyed on <html> data attributes, which page scripts that
+    // rewrite body.className leave alone; ":not(#_)" lifts the rules to
+    // id-level specificity so a page's own !important cursor rules lose.
+    var ANY = ":not(#__cwhr_)";
+    var MODE = "html[data-cwhr-mode]";
+    var COMPOSING = MODE + "[data-cwhr-composing]";
+    style.textContent =
+      "." + SEL_CLASS + "{outline:1px solid hsl(40 70% 40%) !important;outline-offset:0;}" +
+      MODE + ANY + "," + MODE + " " + ANY + "{cursor:" + BUBBLE_CURSOR + " !important;}" +
+      COMPOSING + ANY + "," + COMPOSING + " " + ANY + "{cursor:default !important;}";
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function isUnique(sel) {
+    try {
+      return document.querySelectorAll(sel).length === 1;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Mirrors the host's stripInvisibles ranges. The host strips these
+  // from stored selectors, so a selector built on a value containing
+  // them would validate here but never match again - skip those rungs
+  // and fall through to the structural ladder instead.
+  function hasInvisibles(s) {
+    for (var i = 0; i < s.length; i++) {
+      var c = s.codePointAt(i);
+      if (c > 0xffff) i++;
+      if (
+        c <= 0x1f ||
+        c === 0x061c ||
+        c === 0x070f ||
+        c === 0xad ||
+        (c >= 0x7f && c <= 0x9f) ||
+        c === 0x115f ||
+        c === 0x1160 ||
+        c === 0x180e ||
+        (c >= 0x200b && c <= 0x200f) ||
+        (c >= 0x202a && c <= 0x202e) ||
+        (c >= 0x2060 && c <= 0x2064) ||
+        (c >= 0x2066 && c <= 0x2069) ||
+        c === 0x3164 ||
+        c === 0xfeff ||
+        (c >= 0xfff9 && c <= 0xfffb) ||
+        c === 0xffa0 ||
+        (c >= 0xe0000 && c <= 0xe007f)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function escapeAttr(v) {
+    return String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  // Selector ladder: unique #id -> unique [data-*] -> structural
+  // tag:nth-of-type path rooted at the nearest unique-id ancestor.
+  function selectorFor(el) {
+    if (el.id && !hasInvisibles(el.id) && isUnique("#" + CSS.escape(el.id))) {
+      return "#" + CSS.escape(el.id);
+    }
+    for (var i = 0; i < el.attributes.length; i++) {
+      var attr = el.attributes[i];
+      if (
+        attr.name.indexOf("data-") === 0 &&
+        attr.value &&
+        !hasInvisibles(attr.value)
+      ) {
+        var dataSel = "[" + attr.name + '="' + escapeAttr(attr.value) + '"]';
+        if (isUnique(dataSel)) return dataSel;
+      }
+    }
+    var parts = [];
+    var cur = el;
+    while (cur && cur !== document.body && cur.nodeType === 1 && parts.length < 10) {
+      var sel = cur.tagName.toLowerCase();
+      var parent = cur.parentElement;
+      if (parent) {
+        var sameTag = [];
+        for (var c = 0; c < parent.children.length; c++) {
+          if (parent.children[c].tagName === cur.tagName) sameTag.push(parent.children[c]);
+        }
+        if (sameTag.length > 1) {
+          sel += ":nth-of-type(" + (sameTag.indexOf(cur) + 1) + ")";
+        }
+      }
+      parts.unshift(sel);
+      if (
+        parent &&
+        parent.id &&
+        !hasInvisibles(parent.id) &&
+        isUnique("#" + CSS.escape(parent.id))
+      ) {
+        parts.unshift("#" + CSS.escape(parent.id));
+        return parts.join(" > ");
+      }
+      cur = parent;
+    }
+    if (cur === document.body) {
+      parts.unshift("body");
+      return parts.join(" > ");
+    }
+    // Depth cap hit without a root - an unrooted chain would match the
+    // first structural pattern anywhere in the document. Mark the pin
+    // detached instead of attaching it to the wrong element.
+    return ":not(*)";
+  }
+
+  function descriptorFor(el) {
+    var tag = "<" + el.tagName.toLowerCase() + ">";
+    var idPart = el.id ? " #" + el.id : "";
+    var text = visibleText(el).slice(0, 60);
+    var textPart = text ? ' "' + text + '"' : "";
+    // Nearest id'd ancestor, skipping the UCR-injected
+    // #artifacts-component-root-* wrapper which is implementation noise.
+    var section = el.parentElement;
+    while (
+      section &&
+      (!section.id || section.id.indexOf("artifacts-component-root") === 0)
+    ) {
+      section = section.parentElement;
+    }
+    var sectionPart = section && section.id ? " in #" + section.id : "";
+    return (tag + idPart + textPart + sectionPart).slice(0, 400);
+  }
+
+  // textContent offset of (node, offset) within body - the coordinate
+  // system text-quote anchors are stored in. -1 when the boundary
+  // isn't under body (shadow root, detached).
+  function textOffset(node, offset) {
+    var body = document.body;
+    if (!body) return -1;
+    try {
+      var pre = document.createRange();
+      pre.selectNodeContents(body);
+      pre.setEnd(node, offset);
+      return pre.toString().length;
+    } catch (e) {
+      return -1;
+    }
+  }
+
+  // Inverse: build a Range covering [start, end) in body.textContent.
+  function rangeForOffsets(start, end) {
+    var body = document.body;
+    if (!body) return null;
+    var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    var acc = 0;
+    var range = document.createRange();
+    var haveStart = false;
+    var t;
+    while ((t = walker.nextNode())) {
+      var next = acc + t.length;
+      if (!haveStart && start < next) {
+        range.setStart(t, start - acc);
+        haveStart = true;
+      }
+      if (haveStart && end <= next) {
+        range.setEnd(t, end - acc);
+        return range;
+      }
+      acc = next;
+    }
+    return null;
+  }
+
+  // Context-scored search (W3C text-quote resolution): slice-check the
+  // hint, else pick the occurrence whose surrounding chars best match
+  // prefix/suffix. MIRRORS locateTextQuote() above line-for-line - the
+  // tested export is the contract; this copy is what the sandbox runs.
+  function locateQuote(text, q) {
+    var ex = q.exact;
+    if (!ex) return null;
+    var hint = q.startOffset >= 0 ? q.startOffset : 0;
+    if (text.slice(hint, hint + ex.length) === ex) {
+      return { start: hint, end: hint + ex.length };
+    }
+    var best = -1;
+    var bestScore = -1;
+    var bestDist = Infinity;
+    var scanned = 0;
+    for (var idx = text.indexOf(ex); idx !== -1 && ++scanned <= 1000; idx = text.indexOf(ex, idx + 1)) {
+      var before = text.slice(Math.max(0, idx - CONTEXT_LEN), idx);
+      var after = text.slice(idx + ex.length, idx + ex.length + CONTEXT_LEN);
+      var sc = 0;
+      for (var i = 1; i <= q.prefix.length && i <= before.length; i++) {
+        if (q.prefix[q.prefix.length - i] !== before[before.length - i]) break;
+        sc++;
+      }
+      for (var j = 0; j < q.suffix.length && j < after.length; j++) {
+        if (q.suffix[j] !== after[j]) break;
+        sc++;
+      }
+      var dist = Math.abs(idx - hint);
+      if (sc > bestScore || (sc === bestScore && dist < bestDist)) {
+        best = idx;
+        bestScore = sc;
+        bestDist = dist;
+      }
+    }
+    return best === -1 ? null : { start: best, end: best + ex.length };
+  }
+
+  function collectLineRects(range, cap) {
+    var out = [];
+    var rects = range.getClientRects();
+    for (var i = 0; i < rects.length && out.length < cap; i++) {
+      var r = rects[i];
+      if (r.width > 0 && r.height > 0) {
+        out.push({ x: r.left, y: r.top, w: r.width, h: r.height });
+      }
+    }
+    return out;
+  }
+
+  function reportTextSel(full) {
+    if (!port) return;
+    var sel = window.getSelection();
+    var r = sel && !sel.isCollapsed && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+    if (!r || !document.body || !document.body.contains(r.commonAncestorContainer)) {
+      if (hasTextSel) {
+        hasTextSel = false;
+        port.postMessage({ type: "textClear" });
+      }
+      return;
+    }
+    hasTextSel = true;
+    var br = r.getBoundingClientRect();
+    var msg = {
+      type: "textCapture",
+      rect: { x: br.left, y: br.top, w: br.width, h: br.height },
+      lineRects: collectLineRects(r, 80),
+    };
+    if (full) {
+      var live = document.body.textContent || "";
+      var so = textOffset(r.startContainer, r.startOffset);
+      var eo = textOffset(r.endContainer, r.endOffset);
+      if (so < 0 || eo < 0 || eo <= so) {
+        // Unanchorable selection (shadow root, foreign node). A
+        // rect-only post here would make the host pair the new rect
+        // with a stale prior anchor - clear instead.
+        hasTextSel = false;
+        port.postMessage({ type: "textClear" });
+        return;
+      }
+      // Denomination invariant: exact/prefix/suffix are byte-identical
+      // slices of body.textContent. Truncation adjusts endOffset so
+      // the host's (endOffset - startOffset === exact.length) shape
+      // check holds. Cut points back off surrogate halves - a lone
+      // surrogate would never relocate and fails UTF-8 persist.
+      var capped = Math.min(eo, so + EXACT_CAP);
+      if (capped < eo) {
+        var hc = live.charCodeAt(capped - 1);
+        if (hc >= 0xd800 && hc <= 0xdbff) capped--;
+      }
+      if (capped <= so) {
+        port.postMessage(msg);
+        return;
+      }
+      var pStart = Math.max(0, so - CONTEXT_LEN);
+      var pc = live.charCodeAt(pStart);
+      if (pc >= 0xdc00 && pc <= 0xdfff) pStart++;
+      var sEnd = Math.min(live.length, capped + CONTEXT_LEN);
+      if (sEnd < live.length) {
+        var sc = live.charCodeAt(sEnd - 1);
+        if (sc >= 0xd800 && sc <= 0xdbff) sEnd--;
+      }
+      msg.exact = live.slice(so, capped);
+      msg.prefix = live.slice(pStart, so);
+      msg.suffix = live.slice(capped, sEnd);
+      msg.startOffset = so;
+      msg.endOffset = capped;
+    }
+    port.postMessage(msg);
+  }
+
+  function clearSelection() {
+    if (selected) {
+      selected.classList.remove(SEL_CLASS);
+      selected = null;
+    }
+  }
+
+  // rAF-throttled cursor + hover-rect stream so the host can paint the
+  // inspector hover box (and knows the pointer is present) in comment mode.
+  var cursorPending = false;
+  var cursorX = -1;
+  var cursorY = -1;
+  function flushCursor() {
+    cursorPending = false;
+    if (!port) return;
+    var hover = null;
+    if (
+      hoverEl &&
+      hoverEl.nodeType === 1 &&
+      hoverEl !== document.body &&
+      hoverEl !== document.documentElement
+    ) {
+      var r = hoverEl.getBoundingClientRect();
+      if (r.width > 0 || r.height > 0) {
+        hover = { x: r.left, y: r.top, w: r.width, h: r.height };
+      }
+    }
+    port.postMessage({ type: "cursor", x: cursorX, y: cursorY, hover: hover });
+  }
+  function scheduleCursor() {
+    if (!cursorPending) {
+      cursorPending = true;
+      requestAnimationFrame(flushCursor);
+    }
+  }
+  function onMouseMove(ev) {
+    if (!mode || !port) return;
+    // Over the scrollbar gutter (clientX/Y past the content box) - hide
+    // the hover box like a leave.
+    var de = document.documentElement;
+    if (ev.clientX >= de.clientWidth || ev.clientY >= de.clientHeight) {
+      cursorX = -1;
+      cursorY = -1;
+      hoverEl = null;
+      scheduleCursor();
+      return;
+    }
+    cursorX = ev.clientX;
+    cursorY = ev.clientY;
+    hoverEl = ev.target;
+    scheduleCursor();
+  }
+  function onMouseLeave() {
+    if (!mode || !port) return;
+    cursorX = -1;
+    cursorY = -1;
+    hoverEl = null;
+    scheduleCursor();
+  }
+
+  function onClick(ev) {
+    if (!port) return;
+    if (!mode) {
+      // Mode off: don't intercept the page, just let the host close any
+      // open popover (thread card click-away). A non-collapsed selection
+      // means the click ended a drag-select - not a click-away.
+      var s = window.getSelection();
+      if (!s || s.isCollapsed) port.postMessage({ type: "clickAway" });
+      return;
+    }
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    var el = ev.target;
+    if (!el || el.nodeType !== 1 || el === document.documentElement) return;
+    if (el === document.body && el.firstElementChild) {
+      // Pin on body is rarely intentional; keep it anyway but as body.
+    }
+    clearSelection();
+    selected = el;
+    el.classList.add(SEL_CLASS);
+    var rect = el.getBoundingClientRect();
+    var pinX = rect.width > 0 ? (ev.clientX - rect.left) / rect.width : 0.5;
+    var pinY = rect.height > 0 ? (ev.clientY - rect.top) / rect.height : 0.5;
+    port.postMessage({
+      type: "capture",
+      selector: selectorFor(el).slice(0, 1000),
+      textHint: visibleText(el).slice(0, 300),
+      descriptor: descriptorFor(el),
+      pinX: Math.min(1, Math.max(0, pinX)),
+      pinY: Math.min(1, Math.max(0, pinY)),
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      rectLeft: rect.left,
+      rectTop: rect.top,
+    });
+  }
+
+  function reportRects() {
+    rafPending = false;
+    if (!port) return;
+    // Selected element's live bounds - keeps the host's draft pin /
+    // inspector tag / composer glued through scroll and reflow.
+    if (selected) {
+      var sr = selected.getBoundingClientRect();
+      port.postMessage({
+        type: "selRect",
+        left: sr.left,
+        top: sr.top,
+        w: sr.width,
+        h: sr.height,
+        found:
+          (sr.width > 0 || sr.height > 0) &&
+          document.documentElement.contains(selected),
+      });
+    }
+    var rects = [];
+    for (var i = 0; i < pins.length; i++) {
+      var p = pins[i];
+      var el = null;
+      try {
+        el = document.querySelector(p.selector);
+      } catch (e) {
+        el = null;
+      }
+      if (!el) {
+        rects.push({ id: p.id, x: 0, y: 0, found: false });
+        continue;
+      }
+      var r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) {
+        rects.push({ id: p.id, x: 0, y: 0, found: false });
+        continue;
+      }
+      rects.push({
+        id: p.id,
+        x: r.left + p.pinX * r.width,
+        y: r.top + p.pinY * r.height,
+        found: true,
+      });
+    }
+    var quoteRects = [];
+    if (quotes.length > 0) {
+      var live = null;
+      for (var qi = 0; qi < quotes.length; qi++) {
+        var q = quotes[qi];
+        var qr = quoteRanges[q.id];
+        if (qr === undefined) {
+          if (live === null) {
+            live = (document.body && document.body.textContent) || "";
+          }
+          var loc = locateQuote(live, q);
+          qr = (loc && rangeForOffsets(loc.start, loc.end)) || null;
+          quoteRanges[q.id] = qr;
+        }
+        // Zero paintable rects (display:none subtree) reports as
+        // not-found so the host docks it as detached instead of
+        // rendering nothing clickable.
+        var qlr = qr ? collectLineRects(qr, 80) : [];
+        quoteRects.push(
+          qlr.length > 0
+            ? { id: q.id, found: true, lineRects: qlr }
+            : { id: q.id, found: false, lineRects: [] }
+        );
+      }
+    }
+    port.postMessage({
+      type: "rects",
+      rects: rects,
+      quoteRects: quoteRects,
+      scrollY: window.scrollY || 0,
+    });
+  }
+
+  function scheduleRects() {
+    if (rafPending) return;
+    rafPending = true;
+    var done = false;
+    function run() {
+      if (done) return;
+      done = true;
+      reportRects();
+    }
+    // rAF for paint alignment, with a timeout fallback - rAF is
+    // suspended entirely in hidden tabs and pins must still settle
+    // when the tab becomes visible after background loading.
+    requestAnimationFrame(run);
+    setTimeout(run, 150);
+  }
+
+  function setMode(on) {
+    mode = !!on;
+    document.documentElement.toggleAttribute("data-cwhr-mode", mode);
+    if (!mode) {
+      hoverEl = null;
+      clearSelection();
+    }
+  }
+
+  function setComposing(open) {
+    document.documentElement.toggleAttribute("data-cwhr-composing", !!open);
+  }
+
+  function onPortMessage(ev) {
+    var data = ev.data;
+    if (!data) return;
+    if (data.type === "mode") setMode(data.on);
+    else if (data.type === "composing") setComposing(data.open);
+    else if (data.type === "pins") {
+      pins = Array.isArray(data.pins) ? data.pins : [];
+      scheduleRects();
+    } else if (data.type === "quotes") {
+      quotes = Array.isArray(data.quotes) ? data.quotes : [];
+      quoteRanges = Object.create(null);
+      scheduleRects();
+    } else if (data.type === "clearSelection") {
+      clearSelection();
+    } else if (data.type === "clearTextSel") {
+      var ts = window.getSelection();
+      if (ts) ts.removeAllRanges();
+      hasTextSel = false;
+    } else if (data.type === "restoreScroll") {
+      var ry = Number(data.y);
+      if (isFinite(ry) && ry > 0) {
+        // Apply now and again at load - late images/fonts can grow the
+        // document after the first attempt clamps short.
+        window.scrollTo(0, ry);
+        window.addEventListener("load", function () {
+          window.scrollTo(0, ry);
+        });
+      }
+    }
+  }
+
+  function start() {
+    injectStyle();
+    var channel = new _MessageChannel();
+    port = channel.port1;
+    port.onmessage = onPortMessage;
+    // Sandboxed srcdoc origins can be opaque; "*" is required. The
+    // payload carries only the mount token (multiple sandboxes can be
+    // mounted at once - the token routes the port to the right overlay)
+    // and the channel port itself is pairwise-secure.
+    _topPost(
+      { type: READY_TYPE, token: "59933d94-4873-476f-a675-10c0acb4fb57" },
+      "*",
+      [channel.port2]
+    );
+    document.addEventListener("mousemove", onMouseMove, true);
+    // documentElement (not document, capture) so this fires only when the
+    // pointer leaves the viewport - capture-phase on document would fire for
+    // every intra-document element-boundary crossing.
+    document.documentElement.addEventListener("mouseleave", onMouseLeave);
+    document.addEventListener("click", onClick, true);
+    // Text-selection capture: commit on mouseup/keyup (Shift+Arrow),
+    // clear on collapse. Not mode-gated; highlight-to-comment is
+    // always on.
+    function onSelCommit() { reportTextSel(true); }
+    document.addEventListener("mouseup", onSelCommit, true);
+    document.addEventListener("keyup", onSelCommit, true);
+    document.addEventListener("selectionchange", function () {
+      var s = window.getSelection();
+      if (hasTextSel && (!s || s.isCollapsed)) reportTextSel(false);
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && port) port.postMessage({ type: "dismiss" });
+    }, true);
+    // Scroll/resize move the hovered element under a stationary pointer -
+    // re-report its rect so the host's inspector box tracks it. Mutations
+    // stay rects-only (animating pages would chatter the cursor stream).
+    var textSelPending = false;
+    function scheduleTextSel() {
+      if (textSelPending) return;
+      textSelPending = true;
+      requestAnimationFrame(function () {
+        textSelPending = false;
+        reportTextSel(false);
+      });
+    }
+    function onLayoutChange() {
+      scheduleRects();
+      if (mode && hoverEl) scheduleCursor();
+      if (hasTextSel) scheduleTextSel();
+    }
+    window.addEventListener("scroll", onLayoutChange, true);
+    window.addEventListener("resize", onLayoutChange);
+    // Full-cache invalidate per childList mutation is acceptable: CSS
+    // animation doesn't fire the observer; JS writers at frame rate
+    // would re-relocate every frame but are rare. characterData isn't
+    // observed, so .data= edits leave highlights stale until the next
+    // childList mutation.
+    var observer = new MutationObserver(function () {
+      quoteRanges = Object.create(null);
+      scheduleRects();
+      if (hasTextSel) scheduleTextSel();
+    });
+    function observe() {
+      if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.body) observe();
+    else document.addEventListener("DOMContentLoaded", observe);
+    // Settle pins after late layout (fonts, images).
+    setInterval(scheduleRects, 2000);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start);
+  } else {
+    start();
+  }
+})();
+</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Invoice Generator</title>
@@ -22,6 +1175,7 @@ button.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
 button:focus-visible,input:focus-visible{outline:2px solid var(--btn);outline-offset:1px}
 .pmsg{margin-bottom:10px;padding:10px 12px;border:1px solid var(--neg);border-radius:6px;color:var(--neg);font-size:14px}
 .pmsg[hidden]{display:none}
+input.req{outline:2px solid var(--neg)!important;border-color:var(--neg)!important}
 .sheet{background:var(--paper);border:6px solid var(--frame);padding:0}
 .head{display:flex;justify-content:space-between;gap:16px;padding:18px 20px 12px;flex-wrap:wrap}
 .head h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.02em}
@@ -72,219 +1226,15 @@ body{background:#fff}.bar,.add,.pmsg,.lib,.seg,tr.qrow,td.np,th.np,.x{display:no
 .wide{overflow:visible}table{min-width:0}
 }
 </style>
-<style>
-.SignerDigitalExtPopupModal {
-	font-family: Calibri, sans-serif;
-	display: none;
-	height: 100%;
-	width: 100%;
-	justify-content: center;
-	display: flex;
-	left: 0;
-	top: 0;
-	position: fixed;
-	z-index: 9999;
-}
-
-.SignerDigitalExtClose {
-    position: absolute;
-    top: 30px;
-    right: 525px;
-    background: none;
-    border: none;
-    color: black;
-    font-size: 25px;
-    cursor: pointer;
-    transition: color 0.3s ease-in-out;
-}
-.SignerDigitalExtLicSitesClose {
-	background: none;
-	border: none;
-	color: black;
-	font-size: 25px;
-	cursor: pointer;
-	line-height:1;
-	transition: color 0.3s ease-in-out;
-}
-
-.SignerDigitalExtSelCertContainer {
-    font-family: Calibri, sans-serif;
-    background-color: #e6faf6;
-    top: 50px;
-	position: relative;
-	padding: 10px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    margin: 30px auto;
-    width: 420px;
-    height: 420px;
-}
-
-.SignerDigitalExtSCPinContainer {
-    font-family: Calibri, sans-serif;
-    background-color: #e6faf6;
-    top: 50px;
-	position: relative;
-	padding: 10px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    margin: 30px auto;
-    width: 360px;
-    height: 180px;
-}
-
-#SDCertListContainer {
-    margin-top: 10px;
-    max-height: 300px;
-    background-color: white;
-    overflow-y: auto;
-    padding: 0px;
-    border-radius: 5px;
-}
-
-
-.SignerDigitalExtImg {
-    text-align: start;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 40px;
-}
-
-.SignerDigitalExtSpan {
-    text-align: center;
-    font-size: 24px;
-    color: #333;
-}
-
-.SignerDigitalExtCertItem {
-    padding: 5px;
-    border-bottom: 1px solid;
-    margin-bottom: 2px;
-    cursor: pointer;
-}
-
-.SignerDigitalExtCertItem:hover {
-	background-color: #ccc;
-}
-
-.SignerDigitalExtCertItem.selected {
-	background-color: #ccc;
-	border-color: #007bff;
-}
-
-.expired {
-    color: red;
-    font-weight: bold;
-}
-
-.SignerDigitalExtButton {
-    padding: 20px;
-    text-align: center;
-    font-size: 14px;
-}
-.SignerDigitalExtLicSitesImg {
-	padding-top: 10px;
-	display: flex;
-	justify-content: center;
-}
-
-.SignerDigitalExtLicSitesSpan {
-	font-size: 18px;
-	font-weight: bold;
-}
-
-.SignerDigitalExtLicSitesContainer {
-	font-family: Calibri, sans-serif;
-	background-color: #e6faf6;
-	border: 1px solid black;
-	box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-	margin: 30px auto;
-	width: 550px;
-	height: 500px;
-}
-
-.SignerDigitalExtLicSitesHeader {
-	font-size: 16px;
-	display: flex;
-	justify-content: space-between;
-	background-color: white;
-	padding: 5px;
-	border-bottom: 1px solid #ddd;
-}
-
-.SignerDigitalExtLicSitesParagraph {
-	padding-left: 15px;
-	padding-top: 20px;
-	font-size: 14px;
-}
-
-.SignerDigitalExtLicSitesDiv {
-	display: flex;
-	justify-content:center;
-	padding: 10px;
-}
-
-.SignerDigitalExtLicSitesBtn {
-	width: 100px;
-	padding: 3px;
-	font-weight: 600;
-	font-size: 12px;
-	box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.5);
-}
-
-
- .SignerDigitalExtLicSitesTable {
-     width: 100%;
-     background-color: white;
-     border-collapse: collapse;
- }
-
-	
- .SignerDigitalExtLicSitesTd {
-	 padding: 5px !important;
-     width: 140px;
-     border: 1px solid #ddd;
-     text-align: left;
-	 vertical-align:middle;
- }
- .SignerDigitalExtLicSitesTdd {
-     border: 1px solid #ddd;
-     text-align: center;
- }
-
- .SignerDigitalExtLicSitesTh {
-     border: 1px solid #ddd;
-     background-color: #f4f4f4;
-	 line-height:1;
-     width: 100px;
-     text-align: left;
-	 margin-top:5px;
-     padding: 5px;
- }
-.SignerDigitalExtLicSitesScroll {
-     max-height: 200px;
-     overflow-y: auto;
- }
- .SignerDigitalExtLicSitesDltbtn {
-     color: white;
-     background-color: #e42424;
-     border: 1px solid black;
-     cursor: pointer;
-     border-radius: 4px;
- }
- .SignerDigitalExtLicSitesDltbtn:hover {
-         background-color: darkred;
- }
-</style>
-</head>
-<body>
+<style>.__cwhr-sel{outline:1px solid hsl(40 70% 40%) !important;outline-offset:0;}html[data-cwhr-mode]:not(#__cwhr_),html[data-cwhr-mode] :not(#__cwhr_){cursor:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'24'%20height%3D'24'%20viewBox%3D'0%200%2024%2024'%3E%3Cpath%20d%3D'M12%20.5h0A11.5%2011.5%200%200%201%2023.5%2012v0A11.5%2011.5%200%200%201%2012%2023.5H2.5a2%202%200%200%201-2-2V12A11.5%2011.5%200%200%201%2012%20.5Z'%20fill%3D'%23fff'%20stroke%3D'rgba(0%2C0%2C0%2C0.22)'%20stroke-width%3D'1'%2F%3E%3C%2Fsvg%3E") 1 23, url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAACjklEQVR4AbRWS2gaURR9TGpiFTUEWpKQkA+EruqizWcRSBRT/G8KKpXiyo0ra1fVNiDFLmypFUo3iht/iO4Uay1FGwtFECl1p6KWLly4CGqrSMTY+wRFQ7WhGYd7Zu697845b+7M8B6BJh+UxcXFG3a7XeTxeHQAC+C12+1+ZLPZhHgMbp8FjLWxAkaj8U48Hg8lEomfIpEoLBaLLTKZTAd4LJFI3kD8HsZ+xGKxoMFgYI9T+JvAtUAg8FylUn3hcDj8ra0t6vLyMmKxWIhCofSAfZyDMRqXy+Wr1eqvPp/vKYjMAEZsRMDpdN6MRCKf+Xz+8cbGBm2kckIAtXShUGgKh8Mnfr9/Ybh0IKDT6a4vLS19EggE+wwGY7jmUj6TyUTQyv35+fmP0MbBexkISKVS+97e3u1LsU0oAo67Go3G1i/pCZjN5t3Nzc0H/zPzPlH/ip8EWvbQYrHs4hwWmN3e3n62traGfZy7MtbX12fYbPYTIKIQOzs7C6urq/cgINVWVlaO4EtjEXq9nken06mksgMZtJthtVp5xNzcHBsEIEWu0Wg0RKVS2USz2WTigFx6hPCkMTfRarXgB6WQzd/j63Q6bdK+nB7j0KnRaCCCIMpTE4D2oEql8m1qAvV6/VSr1U5PIJvN+qFjv6fyBIVC4ZfD4XgJAmekC9RqNZROp1+FQqESCCDSBWCVO1EoFC8wOQZpAnjm0Wj0O/xX94H4HNAzotvtNnreFU6lUgllMplAMpnclcvlp8NURC6Xi8BLGc5N9NvtNqpWq6hcLqN8Pn8OLUkAMe/g4EAOG4WzizcTJpPpA6zFIpfL9Ra2I45/IRgM2lKp1LtisXjs9XpvHR4eHimVythF4n78BwAA//8r8OPFAAAABklEQVQDAPCY8Oae0TJxAAAAAElFTkSuQmCC") 1 23, default !important;}html[data-cwhr-mode][data-cwhr-composing]:not(#__cwhr_),html[data-cwhr-mode][data-cwhr-composing] :not(#__cwhr_){cursor:default !important;}</style></head>
+<body id="artifacts-component-root-html">
 <div class="wrap">
   <div class="bar">
     <button class="alt" id="reset">New invoice</button>
+    <button class="alt" id="xl">Save as Excel</button>
     <button id="print">Print / Save PDF</button>
   </div>
+  <div id="xmsg" class="pmsg">Please enter the invoice number first.</div>
   <div id="pmsg" class="pmsg" hidden="">Printing is blocked inside this view. Open this page in your phone or computer browser (menu → Open in browser) and press Print again, or use the browser's own Share / Print option. The downloaded invoice.html file also prints normally.</div>
   <div class="sheet">
     <div class="head">
@@ -295,7 +1245,7 @@ body{background:#fff}.bar,.add,.pmsg,.lib,.seg,tr.qrow,td.np,th.np,.x{display:no
       </div>
       <div class="r">
         <h1>INVOICE</h1>
-        <div class="hn"><span>#</span><input id="no" placeholder="117" aria-label="Invoice number" inputmode="numeric"></div>
+        <div class="hn"><span>#</span><input id="no" placeholder="117" aria-label="Invoice number" inputmode="numeric" class="req"></div>
         <div><b>DATE :- <span id="date"></span></b></div>
       </div>
     </div>
@@ -317,7 +1267,7 @@ body{background:#fff}.bar,.add,.pmsg,.lib,.seg,tr.qrow,td.np,th.np,.x{display:no
     <p style="margin:8px 0 0"><small>To keep your library inside the file itself, press <b>Save library inside page file</b> and replace your old invoice.html with the new one. One item name per line. Edit freely, it saves automatically. When you type in an item name on the invoice, matching names from this list appear.</small></p>
     <textarea id="libtxt" aria-label="Item library" placeholder="BASMATI RICE
 TURMERIC POWDER
-CUMIN SEEDS" spellcheck="false" autocomplete="off"></textarea>
+CUMIN SEEDS" spellcheck="false"></textarea>
     <div class="row">
       <button id="libAdd">Add names from this invoice</button>
       <button class="alt" id="libSort">Sort A-Z</button>
@@ -440,6 +1390,7 @@ $("addI").onclick=function(){S.items.push({d:"",q:"",r:""});render();focusLast('
 $("addB").onclick=function(){S.boxes.push({kg:"",r:""});render();focusLast('input[data-k="boxes"][data-f="kg"]')};
 $("addA").onclick=function(){S.advs.push({a:""});render();focusLast('input[data-k="advs"]')};
 $("print").onclick=function(){
+  if(!needNo())return;
   var fired=false,h=function(){fired=true};
   window.addEventListener("beforeprint",h);
   try{window.print()}catch(e){}
@@ -522,6 +1473,117 @@ $("libSave").onclick=async function(){
   }
 };
 $("libSort").onclick=function(){libSet(libItems().sort())};
+var CRC=(function(){var t=[],c,n,k;for(n=0;n<256;n++){c=n;for(k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u){var c=0xFFFFFFFF;for(var i=0;i<u.length;i++)c=CRC[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+function zipStore(files){
+  var enc=new TextEncoder(),parts=[],cd=[],off=0;
+  files.forEach(function(f){
+    var nm=enc.encode(f[0]),d=enc.encode(f[1]),crc=crc32(d);
+    var h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(12,0x5821,true);
+    h.setUint32(14,crc,true);h.setUint32(18,d.length,true);h.setUint32(22,d.length,true);h.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(h.buffer),nm,d);
+    var c=new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(14,0x5821,true);
+    c.setUint32(16,crc,true);c.setUint32(20,d.length,true);c.setUint32(24,d.length,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+    cd.push(new Uint8Array(c.buffer),nm);
+    off+=30+nm.length+d.length;
+  });
+  var cs=0;cd.forEach(function(x){cs+=x.length});
+  var e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+  return new Blob(parts.concat(cd,[new Uint8Array(e.buffer)]),{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+function xe(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function buildXlsx(){
+  var rows={},merges=["A1:E1","A2:C2","D2:E2","A3:C3","D3:E3"],g=0,r=5;
+  function C(col,v,s,f){return{c:col,v:v,s:s,f:f}}
+  rows[1]=[C("A","INVOICE",7)];
+  rows[2]=[C("A","M/S:- "+$("name").value,1),C("D","#"+$("no").value,8)];
+  rows[3]=[C("A",$("country").value,1),C("D","DATE :- "+$("date").textContent,8)];
+  rows[5]=[C("A","#",6),C("B","DESCRIPTION",6),C("C","QTY",6),C("D","RATE",6),C("E","TOTAL",6)];
+  var num=function(v){return v===""||v==null?null:n(v)};
+  S.items.forEach(function(x,i){
+    r++;var t=n(x.q)*n(x.r);g+=t;
+    rows[r]=[C("A",i+1,3),C("B",x.d,2),C("C",num(x.q),5),C("D",num(x.r),4),C("E",t,4,"C"+r+"*D"+r)];
+  });
+  if(S.boxes.length||S.advs.length){r++;rows[r]=[C("B","SHIPPING",11),C("C","KG",10),C("D","PRICE",10)]}
+  S.boxes.forEach(function(x,i){
+    r++;var t=n(x.kg)*n(x.r);g+=t;
+    rows[r]=[C("B","BOX "+(i+1),2),C("C",num(x.kg),5),C("D",num(x.r),4),C("E",t,4,"C"+r+"*D"+r)];
+  });
+  S.advs.forEach(function(x,i){
+    r++;var t=-Math.abs(n(x.a));g+=t;
+    rows[r]=[C("B","(-ADVANCE) "+(i+1),13),C("D",num(x.a),4),C("E",t,4,"-ABS(D"+r+")")];
+  });
+  var L=r;r++;
+  rows[r]=[C("D","GRAND TOTAL",11),C("E",g,12,"SUM(E6:E"+L+")")];
+  var X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n',cols="ABCDE",sd="";
+  for(var i=1;i<=r;i++){
+    var m={};(rows[i]||[]).forEach(function(c){m[c.c]=c});
+    sd+='<row r="'+i+'">';
+    for(var k=0;k<5;k++){
+      var L2=cols[k],c=m[L2],ref=L2+i,s=c?c.s:(i<5?1:2);
+      if(!c||c.v===null||c.v===""){sd+='<c r="'+ref+'" s="'+s+'"/>';continue}
+      if(c.f)sd+='<c r="'+ref+'" s="'+s+'"><f>'+c.f+'</f><v>'+c.v+'</v></c>';
+      else if(typeof c.v==="number")sd+='<c r="'+ref+'" s="'+s+'"><v>'+c.v+'</v></c>';
+      else sd+='<c r="'+ref+'" s="'+s+'" t="inlineStr"><is><t xml:space="preserve">'+xe(c.v)+'</t></is></c>';
+    }
+    sd+='</row>';
+  }
+  var ns='xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  var sheet=X+'<worksheet '+ns+'><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:E'+r+'"/>'+
+    '<cols><col min="1" max="1" width="5" customWidth="1"/><col min="2" max="2" width="44" customWidth="1"/><col min="3" max="3" width="11" customWidth="1"/><col min="4" max="4" width="14" customWidth="1"/><col min="5" max="5" width="18" customWidth="1"/></cols>'+
+    '<sheetData>'+sd+'</sheetData><mergeCells count="'+merges.length+'">'+merges.map(function(x){return'<mergeCell ref="'+x+'"/>'}).join("")+'</mergeCells>'+
+    '<pageSetup orientation="portrait" fitToWidth="1" fitToHeight="0"/></worksheet>';
+  var b='<border><left style="thin"><color rgb="FF8896AD"/></left><right style="thin"><color rgb="FF8896AD"/></right><top style="thin"><color rgb="FF8896AD"/></top><bottom style="thin"><color rgb="FF8896AD"/></bottom><diagonal/></border>';
+  function xf(f,fi,bo,nf,al){return'<xf numFmtId="'+nf+'" fontId="'+f+'" fillId="'+fi+'" borderId="'+bo+'" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="'+al+'" vertical="center"/></xf>'}
+  var xfs=[xf(0,0,0,0,"left"),xf(0,2,0,0,"left"),xf(0,2,1,0,"left"),xf(0,2,1,0,"center"),xf(0,2,1,164,"right"),xf(0,2,1,0,"center"),
+    xf(1,2,1,0,"center"),xf(2,2,0,0,"center"),xf(1,2,0,0,"right"),xf(0,2,0,0,"left"),xf(1,3,1,0,"center"),xf(1,2,1,0,"right"),xf(1,2,1,164,"right"),xf(0,2,1,0,"right")];
+  var styles=X+'<styleSheet '+ns+'><numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;&#8377;&quot; #,##0.00"/></numFmts>'+
+    '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="18"/><name val="Calibri"/></font></fonts>'+
+    '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDCE6F5"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFF200"/></patternFill></fill></fills>'+
+    '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'+b+'</borders>'+
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+    '<cellXfs count="'+xfs.length+'">'+xfs.join("")+'</cellXfs></styleSheet>';
+  var R='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  return zipStore([
+    ["[Content_Types].xml",X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+    ["_rels/.rels",X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="'+R+'/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+    ["xl/workbook.xml",X+'<workbook '+ns+' xmlns:r="'+R+'"><sheets><sheet name="Invoice" sheetId="1" r:id="rId1"/></sheets><calcPr fullCalcOnLoad="1"/></workbook>'],
+    ["xl/_rels/workbook.xml.rels",X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="'+R+'/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="'+R+'/styles" Target="styles.xml"/></Relationships>'],
+    ["xl/styles.xml",styles],
+    ["xl/worksheets/sheet1.xml",sheet]
+  ]);
+}
+function showX(m){$("xmsg").textContent=m;$("xmsg").hidden=false}
+function needNo(){
+  var f=$("no");
+  if(!f.value.trim()){f.classList.add("req");f.focus();showX("Please enter the invoice number first.");return false}
+  f.classList.remove("req");$("xmsg").hidden=true;return true;
+}
+$("no").addEventListener("input",function(){$("no").classList.remove("req")});
+async function saveFile(name,data){
+  var cap=null;
+  try{
+    if(window.claude&&window.claude.use){
+      cap=await Promise.race([window.claude.use("downloads"),new Promise(function(r){setTimeout(function(){r(null)},2500)})]);
+    }
+  }catch(e){}
+  if(cap){
+    try{await cap.save({filename:name,data:data});return}catch(e){if(e&&e.code==="declined")return}
+  }
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(data);a.download=name;document.body.appendChild(a);a.click();a.remove();
+  if(window.claude)showX("If nothing downloaded: downloads are blocked on this online link in a browser. Open the link inside the Claude app, or use the downloaded invoice.html file on your computer - Save as Excel works there.");
+}
+$("xl").onclick=function(){
+  if(!needNo())return;
+  var bad=/[\\\/:*?"<>|]/g;
+  var no=$("no").value.replace(/#/g,"").replace(bad," ").replace(/\s+/g," ").trim();
+  var nm=$("name").value.replace(bad," ").replace(/\s+/g," ").trim();
+  saveFile("#"+no+(nm?" "+nm:"")+" "+$("date").textContent+".xlsx",buildXlsx());
+};
 libSync();
 (async function(){
   try{
@@ -550,87 +1612,4 @@ render();
 </script>
 
 
-<div style="background-color: transparent; border: 0px; padding: 0px; margin: 0px; position: fixed;"></div><div id="GOOGLE_INPUT_CHEXT_FLAG" input="" input_stat="{&quot;tlang&quot;:true,&quot;tsbc&quot;:true,&quot;pun&quot;:true,&quot;mk&quot;:true,&quot;ss&quot;:true}" style="display: none;"></div></body><div id="SelCertPopupModal" class="SignerDigitalExtPopupModal" style="display:none;">
-    <div class="SignerDigitalExtSelCertContainer">
-        <button id="SelCertCloseBtn" class="SignerDigitalExtClose">x</button>
-		<div class="SignerDigitalExtImg">
-			<img id="SDIconSelCert" alt="Globe icon" height="32" width="32" src="chrome-extension://glghokcicpikglmflbbelbgeafpijkkf/icon32.png">&nbsp;&nbsp;&nbsp;
-			<span class="SignerDigitalExtSpan" style="text-align:center;">Select Certificate</span>
-		</div>		
-		<div style="height: 310px; width: 100%; border-bottom: 1px solid black;background-color:white;">
-			<div style="max-height: 310px; overflow-y: auto;">
-				<div id="SDCertListContainer"></div>
-			</div>
-		</div>
-		<div class="SignerDigitalExtButton">
-			<button id="SelCertOkBtn" style="width: 80px">OK</button>
-			<button id="SelCertCancelBtn" style="margin-left:15px; width: 80px;">Cancel</button>
-		</div>
-	</div>
-</div>
-<div id="SdExtSCPinPopupModal" class="SignerDigitalExtPopupModal" style="display:none;">
-    <div class="SignerDigitalExtSCPinContainer">
-		<form>
-			<div class="SignerDigitalExtImg" style="border-bottom: 1px solid black;">
-				<img id="SDIconSCPin" alt="Globe icon" height="32" width="32" src="chrome-extension://glghokcicpikglmflbbelbgeafpijkkf/icon32.png">&nbsp;&nbsp;&nbsp;
-				<span class="SignerDigitalExtSpan" style="text-align:center;">Smartcard / Token User Pin</span>
-			</div>
-			<div style="text-align:center; padding-top:25px; padding-bottom:25px; font-size:14px;">User PIN:&nbsp;&nbsp;&nbsp;<input id="SdExtUserPin" type="password">
-			</div>
-			<div class="SignerDigitalExtButton" style="border-top: 1px solid black;">
-				<button id="SdScPinOkBtn" type="button" style="width: 80px">OK</button>
-				<button id="SdSCPinCancelBtn" type="button" style="margin-left:15px; width: 80px;">Cancel</button>
-			</div>
-		</form>
-	</div>
-</div>
-<div id="LicSitesPopupModal" class="SignerDigitalExtPopupModal" style="display:none;">
-	<div class="SignerDigitalExtLicSitesContainer">
-		<div class="SignerDigitalExtLicSitesHeader">
-			<span style="margin:10px;">Signer.Digital</span>
-			<button id="LicSitesCloseBtn" class="SignerDigitalExtLicSitesClose">x</button>
-		</div>
-		<div class="SignerDigitalExtLicSitesImg">
-			<img id="SDIconLicSite" alt="Globe icon" height="32" width="32" src="chrome-extension://glghokcicpikglmflbbelbgeafpijkkf/icon32.png">&nbsp;&nbsp;
-			<span class="SignerDigitalExtLicSitesSpan">Signer.Digital - Confirm Key Listing / Usage</span>
-		</div>
-		<div style="display:none;"><img id="trash_icon_src" src="chrome-extension://glghokcicpikglmflbbelbgeafpijkkf/icon_trash.svg"></div>
-		<div class="SignerDigitalExtLicSitesParagraph">
-			<span id="currentDomainLink" style="font-size:18px;font-weight:600;">Current Domain</span><br>
-			is trying to detect smartcards connected, or read certificate or use key for signing/encryption. Please
-			select your option.
-		</div>
-		<div class="SignerDigitalExtLicSitesDiv">
-			<button id="denyBtn" class="SignerDigitalExtLicSitesBtn">Deny</button>
-			<button id="alwaysallowBtn" class="SignerDigitalExtLicSitesBtn" style="margin-left:30px;" title="Allow access to Check Vendor License for Site.">Always Allow</button>
-		</div>
-		<div style="padding: 10px; text-align: center; ">
-			<strong style="font-size:18px;">Licensed Sites</strong><br><br>
-			<div style="height: 200px; width: 100%; border: 1px solid black;">
-				<div class="SignerDigitalExtLicSitesScroll">
-					<table class="SignerDigitalExtLicSitesTable">
-						<thead>
-							<tr>
-								<th class="SignerDigitalExtLicSitesTh">Website</th>
-								<th class="SignerDigitalExtLicSitesTh">License Status</th>
-								<th class="SignerDigitalExtLicSitesTh">Features</th>
-								<th class="SignerDigitalExtLicSitesTh" style="width:50px;">Action</th>
-							</tr>
-						</thead>
-						<tbody id="licenseSitesTableBody">
-							<!-- Table rows will be dynamically added here -->
-						</tbody>
-					</table>
-				</div>
-			</div>
-			<span id="SDLicSitesErrMsg" style="color:red"></span>
-		</div>
-	</div>
-</div>
-
-
-
-
-
-
-</html>
+</body></html>
