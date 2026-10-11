@@ -22,6 +22,17 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--btn);outline-of
 .pmsg{margin-bottom:10px;padding:10px 12px;border:1px solid var(--neg);border-radius:6px;color:var(--neg);font-size:14px}
 .pmsg[hidden]{display:none}
 .sv{display:none}
+body.locked .wrap{display:none}
+#lock{position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;padding:16px;background:var(--bg);overflow:auto}
+#lock[hidden]{display:none}
+#lock [hidden]{display:none!important}
+.lc{width:100%;max-width:380px;background:var(--paper);border:6px solid var(--frame);padding:22px 20px;display:flex;flex-direction:column;gap:10px}
+.lc h2{margin:0;text-align:center;font-weight:800;font-size:20px}
+.lc p{margin:0;font-size:14px;text-align:center}
+#lock input{text-transform:none;background:var(--field);border:1px solid var(--line);border-radius:6px;min-height:46px;font-size:16px;padding:8px 10px}
+.lerr{color:var(--neg);font-weight:600;min-height:1.2em;font-size:14px;text-align:center}
+.lc button{min-height:46px}
+.auth{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between}
 input.req{outline:2px solid var(--neg)!important;border-color:var(--neg)!important}
 .sheet{background:var(--paper);border:6px solid var(--frame);padding:0}
 .head{display:flex;justify-content:space-between;gap:16px;padding:18px 20px 12px;flex-wrap:wrap}
@@ -146,16 +157,28 @@ tr.qrow td[colspan]::before{display:none}
 .lib .row button{flex:1 1 auto;min-height:44px}
 .lib textarea{font-size:16px}
 }
+@page{size:A4;margin:0}
 @media print{
 :root{--bg:#fff;--ink:#000}
 body{background:#fff}.bar,.add,.pmsg,.lib,.sv,.seg,tr.qrow,td.np,th.np,.x{display:none!important}
-.wrap{padding:0;max-width:none}.sheet{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.wrap{padding:14mm;max-width:none}.sheet{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .head input,td input{background:transparent!important;border:0}
 .wide{overflow:visible}table{min-width:0}
+input::placeholder{color:transparent!important}input:focus,input:focus-visible{outline:none!important}
 }
 </style>
 </head>
-<body>
+<body class="locked">
+<div id="lock">
+  <form id="lf" class="lc" hidden autocomplete="on">
+    <h2 id="lt">INVOICE LOGIN</h2>
+    <p id="lh"></p>
+    <input id="lu" type="text" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <input id="lp" type="password" placeholder="Password" autocomplete="current-password">
+    <div id="lerr" class="lerr" role="alert"></div>
+    <button id="lb" type="submit">Login</button>
+  </form>
+</div>
 <div class="wrap">
   <div class="bar">
     <button class="alt" id="reset">New invoice</button>
@@ -202,6 +225,10 @@ body{background:#fff}.bar,.add,.pmsg,.lib,.sv,.seg,tr.qrow,td.np,th.np,.x{displa
     </div>
     <datalist id="il"></datalist>
   </details>
+  <div class="lib auth">
+    <small>Logged in as <b id="who"></b></small>
+    <span><button type="button" class="alt sm" id="lo">Log out</button></span>
+  </div>
 </div>
 <script type="application/json" id="libdata">["KD001 GOL DRESS", "KD002 COMBI DRESS", "KD003 SANDRA BUTTON DRESS", "KD004 JUNGLEE DRESS", "KD005 HIGH-LOW SET", "KD006 BUTTON DRESS", "KD007 PIPIN DRESS", "KD008 LONG DRESS", "KD009 CHULA DRESS", "KD010 SANDRA MONO", "KD011 TUTINI", "KD012 KURTA (3 BUTTON)", "KD013 SHIRT", "KD014 AFGHANI LYCRA TROUSER", "KD015 NATHAN TROUSER", "KD016 GENTS NATHAN TROUSER", "KD017 TIBET DRESS(WRAP)", "KD018 BOMBACHI", "KD019 UREBI BABY TOP", "KD020 GOL DRESS", "KD021 PARI DRESS", "KD022 SANDRA DRESS", "KD023 NEW JUMPSUIT", "KD024 NEW BOMBACHI", "KD025 LACE TROUSER", "KD026 MOON DRESS", "KD027 FRILL TOP", "KD028 RAMA DRESS", "KD029 ANA DRESS", "KD030 SHORT NATHALI KIDS", "KD031 LORI TOP", "KD032 NINA TOP", "KD033 PAJAMA SET", "KD034 SET", "KD035 ZARA MONO", "KD036 GIRLS SHORT JUTE", "KD037 SHORT MONO", "KD038 BANDI SET", "KD039 CHAIN DRESS", "KD040 SHIRT LONG COLLAR", "KD041 W DRESS", "KD042 BUTTON PATTI DRESS", "KD043 SANDRA PATCH DRESS", "KD044 UMBRELLA DRESS", "KD045 MANTRA DRESS", "KD046 TIE-TOP KIDS", "KD047 FAB DRESS PIPIN", "KD048 SHORT LASTICK", "KD049 HEART DRESS", "KD050 CHOTI DRESS", "KD051 JACKET SHAWL", "KD052 ZARA NEW MONO", "KD053 SANDRA LACE DRESS", "KD054 NEPALI JUMPSUIT", "KD055 BALI DRESS", "KD056 10 BUTTON DUNGRI", "KD057 LASTICK DRESS", "KD058 NEW PIPIN DRESS", "KD059 BABY BOMBACHI", "KD060 PRINCESS DRESS", "KD061 LONG DOULE COLOR DRESS", "KD062 SHAWL DRESS", "KD063 LYCRA MONO", "KD064 SPANISH DRESS", "KD065 FULL SLEEVES BOMBACHI", "KD066 FOUR DOT DRESS", "KD067 NATHALI ZARA MONO", "KD068 MAXICAN DRESS", "KD069 PRINTEX TROUSER", "KD070 LACE MONO", "KD071 MARIA DRESS LACE", "KD072 NAPPY SKIRT", "KD073 ANOKHI TOP", "KD074 BANDI DRESS", "KD075 LACE DRESS", "KD076 LISA JACKET", "KD077 MINA DRESS"]</script>
 <script>
@@ -356,6 +383,7 @@ var CL="Afghanistan|Albania|Algeria|Andorra|Angola|Antigua and Barbuda|Argentina
 $("cl").innerHTML=CL.map(function(x){return '<option value="'+x.toUpperCase().replace(/"/g,"&quot;")+'">'}).join("");
 document.addEventListener("input",function(e){
   var t=e.target;
+  if(t.closest&&t.closest("#lock"))return;
   if(!(t.tagName==="TEXTAREA"||(t.tagName==="INPUT"&&(!t.type||t.type==="text"))))return;
   var a=t.selectionStart,b=t.selectionEnd,u=t.value.toUpperCase();
   if(u!==t.value){t.value=u;try{t.setSelectionRange(a,b)}catch(x){}}
@@ -399,6 +427,10 @@ $("libAdd").onclick=function(){
 };
 function buildHtml(){
   var c=document.documentElement.cloneNode(true);
+  c.querySelector("body").className="locked";
+  c.querySelector("#lock").removeAttribute("hidden");
+  c.querySelector("#lf").setAttribute("hidden","");
+  c.querySelector("#who").textContent="";
   c.querySelector("#body").innerHTML="";
   c.querySelector("#libtxt").textContent="";
   ["il","cl","libn","date","grand"].forEach(function(id){c.querySelector("#"+id).textContent=""});
@@ -565,6 +597,37 @@ libSync();
     },function(){});
   }catch(e){}
 })();
+var enc=new TextEncoder(),CRED={u:"admin",s:"2/e8p+UL/RBmYWSbgEVTdw==",h:"gYCzsQQZJgL/BFtTbcgvZztzmEg+f7mj2UcnlxwKJwA="};
+function unb64(s){var b=atob(s),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+async function hashPw(pw,salt){
+  var k=await crypto.subtle.importKey("raw",enc.encode(pw),"PBKDF2",false,["deriveBits"]);
+  var bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:salt,iterations:150000},k,256);
+  var u=new Uint8Array(bits),s="";for(var i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s);
+}
+function unlock(){
+  document.body.classList.remove("locked");$("lock").hidden=true;$("who").textContent=CRED.u;
+  try{sessionStorage.setItem("inv_ok","1")}catch(e){}
+}
+function showLogin(){
+  $("lerr").textContent="";$("lu").value="";$("lp").value="";
+  $("lt").textContent="INVOICE LOGIN";$("lh").textContent="Enter your username and password.";
+  document.body.classList.add("locked");$("lock").hidden=false;$("lf").hidden=false;
+  setTimeout(function(){$("lu").focus()},60);
+}
+$("lf").addEventListener("submit",async function(e){
+  e.preventDefault();
+  var err=$("lerr");err.textContent="";
+  if(!(window.crypto&&crypto.subtle)){err.textContent="This browser cannot open the login. Use Chrome, Edge or Safari.";return}
+  try{
+    var ok=$("lu").value.trim().toLowerCase()===CRED.u&&(await hashPw($("lp").value,unb64(CRED.s)))===CRED.h;
+    if(ok)unlock();
+    else{await new Promise(function(r){setTimeout(r,800)});err.textContent="Wrong username or password."}
+  }catch(x){err.textContent="Something went wrong. Please try again."}
+});
+$("lo").onclick=function(){try{sessionStorage.removeItem("inv_ok")}catch(e){}showLogin()};
+try{localStorage.removeItem("inv_auth")}catch(e){}
+var sessOK=false;try{sessOK=sessionStorage.getItem("inv_ok")==="1"}catch(e){}
+if(sessOK)unlock();else showLogin();
 var mq=window.matchMedia("(max-width:640px)");
 function placeBtns(){
   var host=mq.matches?$("sv"):document.querySelector(".bar");
