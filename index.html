@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Invoice Generator</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2064%2064%22%3E%3Crect%20width=%2264%22%20height=%2264%22%20rx=%2214%22%20fill=%22%231f4e9c%22/%3E%3Cpath%20d=%22M18%2011h20l10%2010v32a3%203%200%200%201-3%203H18a3%203%200%200%201-3-3V14a3%203%200%200%201%203-3z%22%20fill=%22%23fff%22/%3E%3Cpath%20d=%22M38%2011v7a3%203%200%200%200%203%203h7z%22%20fill=%22%23b9c8e6%22/%3E%3Crect%20x=%2221%22%20y=%2227%22%20width=%2222%22%20height=%223%22%20rx=%221.5%22%20fill=%22%231f4e9c%22/%3E%3Crect%20x=%2221%22%20y=%2234%22%20width=%2216%22%20height=%223%22%20rx=%221.5%22%20fill=%22%238896ad%22/%3E%3Crect%20x=%2221%22%20y=%2242%22%20width=%2222%22%20height=%227%22%20rx=%222%22%20fill=%22%23fff200%22/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
@@ -63,7 +65,12 @@ table{border-collapse:collapse;width:100%;min-width:640px;border-top:2px solid v
 th,td{border:1px solid var(--line);padding:0}
 th{padding:6px 8px;font-size:15px}
 td.c{text-align:center;width:34px;font-size:13px}
-td.lab{padding:4px 8px;text-align:right;font-weight:600}
+td.lab{padding:4px 8px;text-align:right;font-weight:800}
+input[data-f="d"]{font-weight:800}
+tr.tt td{background:var(--field)}
+tr.tt td.c,tr.tt td.sp{background:var(--paper)}
+tr.tt td.t,tr.tt td.lab{font-weight:800;border-top:2px solid var(--frame)}
+tr.tt td.lab{text-align:right}
 td.t{text-align:right;padding:4px 8px;font-variant-numeric:tabular-nums;white-space:nowrap;width:130px}
 td.t.n{color:var(--neg)}
 td.np{width:76px;border:0;background:var(--bg);white-space:nowrap;text-align:center}
@@ -78,7 +85,7 @@ tr.sh td.np{background:var(--bg)}
 .dw{display:flex;align-items:center;gap:6px;padding-right:6px}
 .dw input{flex:1;min-width:0}
 .seg{display:inline-flex;flex:none;border:1px solid var(--line);border-radius:6px;overflow:hidden}
-.sz{min-width:58px;padding:3px 8px;border-radius:0;background:transparent;color:var(--ink);font-size:13px;border:0;border-left:1px solid var(--line)}
+.sz{min-width:44px;padding:3px 6px;border-radius:0;background:transparent;color:var(--ink);font-size:13px;border:0;border-left:1px solid var(--line)}
 .sz:first-child{border-left:0}
 .sz.on{background:var(--btn);color:var(--btnt)}
 tr.qrow td{background:var(--field);padding:8px 10px;font-weight:600}
@@ -169,6 +176,12 @@ td input,td input[type=number]{text-align:left;background:var(--field);margin:4p
 .dw input{flex:1 1 100%;margin:4px 0 0;width:100%}
 .seg{width:100%}
 .sz{flex:1;min-height:42px;font-size:15px}
+/* total rows */
+tr.tt{display:block;margin:10px 8px;border:1px solid var(--line);border-radius:10px;background:var(--field);overflow:hidden}
+tr.tt td{display:none}
+tr.tt td.t{display:flex;border-top:0}
+tr.tt td.t::before{font-size:14px;font-weight:800;opacity:1;letter-spacing:.04em}
+tr.tt td.t{font-size:18px;padding:12px}
 /* shipping heading */
 tr.sh{display:block;margin:14px 8px 0;border-radius:8px;background:var(--hi)}
 tr.sh td{display:none}
@@ -416,13 +429,16 @@ function render(){
        '<button type="button" class="sm" data-q="yes" data-i="'+i+'">Yes</button>'+
        '<button type="button" class="sm alt" data-q="no" data-i="'+i+'">No</button></td><td class="np"></td></tr>';
   });
+  var TT=function(n){return '<tr class="tt" data-sub="'+n+'"><td class="c sp"></td><td class="lab">TOTAL</td><td></td><td></td><td class="t"></td><td class="np"></td></tr>'};
   if(S.boxes.length||S.advs.length){
+    h+=TT(1);
     h+='<tr class="sh"><td class="c sp"></td><td class="sp" style="text-align:right">SHIPPING</td><td>KG</td><td>PRICE</td><td class="sp"></td><td class="np"></td></tr>';
   }
   S.boxes.forEach(function(x,i){
     h+='<tr data-k="boxes" data-i="'+i+'"><td class="c"></td><td class="lab" style="text-align:left">BOX '+(i+1)+'</td><td>'+
        inp("boxes",i,"kg",x.kg,1)+'</td><td>'+inp("boxes",i,"r",x.r,1)+'</td><td class="t"></td>'+del("boxes",i)+'</tr>';
   });
+  if(S.boxes.length&&S.advs.length)h+=TT(2);
   S.advs.forEach(function(x,i){
     h+='<tr data-k="advs" data-i="'+i+'"><td class="c"></td><td class="lab">(-ADVANCE) '+(i+1)+'</td><td></td><td>'+
        inp("advs",i,"a",x.a,1)+'</td><td class="t n"></td>'+del("advs",i)+'</tr>';
@@ -432,7 +448,7 @@ function render(){
 }
 
 function calc(){
-  var g=0;
+  var g=0,si=0,sb=0;
   document.querySelectorAll("#body tr[data-k]").forEach(function(tr){
     var k=tr.dataset.k,x=S[k]&&S[k][+tr.dataset.i],v=0;
     if(!x)return;
@@ -440,8 +456,12 @@ function calc(){
     else if(k==="boxes")v=n(x.kg)*n(x.r);
     else v=-Math.abs(n(x.a));
     g+=v;
+    if(k==="items")si+=v;else if(k==="boxes")sb+=v;
     tr.querySelector(".t").textContent=(v===0&&k!=="advs")?fmt(0):fmt(v);
   });
+  var t1=document.querySelector('#body tr.tt[data-sub="1"] .t'),t2=document.querySelector('#body tr.tt[data-sub="2"] .t');
+  if(t1)t1.textContent=fmt(si);
+  if(t2)t2.textContent=fmt(si+sb);
   $("grand").textContent=fmt(g);
 }
 
@@ -693,21 +713,24 @@ function invRows(){
   rows[3]=[C("A",$("country").value,1),C("D","DATE :- "+$("date").textContent,8)];
   rows[5]=[C("A","#",6),C("B","DESCRIPTION",6),C("C","QTY",6),C("D","RATE",6),C("E","TOTAL",6)];
   var num=function(v){return v===""||v==null?null:n(v)};
+  var det=[],si=0,sb=0;
   S.items.forEach(function(x,i){
-    r++;var t=n(x.q)*n(x.r);g+=t;
-    rows[r]=[C("A",i+1,3),C("B",x.d,2),C("C",num(x.q),5),C("D",num(x.r),4),C("E",t,4,"C"+r+"*D"+r)];
+    r++;var t=n(x.q)*n(x.r);g+=t;si+=t;det.push("E"+r);
+    rows[r]=[C("A",i+1,3),C("B",x.d,14),C("C",num(x.q),5),C("D",num(x.r),4),C("E",t,4,"C"+r+"*D"+r)];
   });
-  if(S.boxes.length||S.advs.length){r++;rows[r]=[C("B","SHIPPING",11),C("C","KG",10),C("D","PRICE",10)]}
+  var firstItem=6,lastItem=r;
+  if(S.boxes.length||S.advs.length){r++;rows[r]=[C("B","TOTAL",11),C("E",si,12,"SUM(E"+firstItem+":E"+lastItem+")")];r++;rows[r]=[C("B","SHIPPING",11),C("C","KG",10),C("D","PRICE",10)]}
   S.boxes.forEach(function(x,i){
-    r++;var t=n(x.kg)*n(x.r);g+=t;
-    rows[r]=[C("B","BOX "+(i+1),2),C("C",num(x.kg),5),C("D",num(x.r),4),C("E",t,4,"C"+r+"*D"+r)];
+    r++;var t=n(x.kg)*n(x.r);g+=t;sb+=t;det.push("E"+r);
+    rows[r]=[C("B","BOX "+(i+1),14),C("C",num(x.kg),5),C("D",num(x.r),4),C("E",t,4,"C"+r+"*D"+r)];
   });
+  if(S.boxes.length&&S.advs.length){r++;rows[r]=[C("B","TOTAL",11),C("E",si+sb,12,"SUM("+det.join(",")+")")]}
   S.advs.forEach(function(x,i){
-    r++;var t=-Math.abs(n(x.a));g+=t;
-    rows[r]=[C("B","(-ADVANCE) "+(i+1),13),C("D",num(x.a),4),C("E",t,4,"-ABS(D"+r+")")];
+    r++;var t=-Math.abs(n(x.a));g+=t;det.push("E"+r);
+    rows[r]=[C("B","(-ADVANCE) "+(i+1),15),C("D",num(x.a),4),C("E",t,4,"-ABS(D"+r+")")];
   });
   var L=r;r++;
-  rows[r]=[C("D","GRAND TOTAL",11),C("E",g,12,"SUM(E6:E"+L+")")];
+  rows[r]=[C("D","GRAND TOTAL",11),C("E",g,12,"SUM("+det.join(",")+")")];
   return{rows:rows,merges:merges,r:r};
 }
 function curFmtCode(){
@@ -743,7 +766,7 @@ function buildXlsx(){
   var b='<border><left style="thin"><color rgb="FF8896AD"/></left><right style="thin"><color rgb="FF8896AD"/></right><top style="thin"><color rgb="FF8896AD"/></top><bottom style="thin"><color rgb="FF8896AD"/></bottom><diagonal/></border>';
   function xf(f,fi,bo,nf,al){return'<xf numFmtId="'+nf+'" fontId="'+f+'" fillId="'+fi+'" borderId="'+bo+'" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="'+al+'" vertical="center"/></xf>'}
   var xfs=[xf(0,0,0,0,"left"),xf(0,2,0,0,"left"),xf(0,2,1,0,"left"),xf(0,2,1,0,"center"),xf(0,2,1,164,"right"),xf(0,2,1,0,"center"),
-    xf(1,2,1,0,"center"),xf(2,2,0,0,"center"),xf(1,2,0,0,"right"),xf(0,2,0,0,"left"),xf(1,3,1,0,"center"),xf(1,2,1,0,"right"),xf(1,2,1,164,"right"),xf(0,2,1,0,"right")];
+    xf(1,2,1,0,"center"),xf(2,2,0,0,"center"),xf(1,2,0,0,"right"),xf(0,2,0,0,"left"),xf(1,3,1,0,"center"),xf(1,2,1,0,"right"),xf(1,2,1,164,"right"),xf(0,2,1,0,"right"),xf(1,2,1,0,"left"),xf(1,2,1,0,"right")];
   var styles=X+'<styleSheet '+ns+'><numFmts count="1"><numFmt numFmtId="164" formatCode="'+curFmtCode()+'"/></numFmts>'+
     '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="18"/><name val="Calibri"/></font></fonts>'+
     '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDCE6F5"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFF200"/></patternFill></fill></fills>'+
@@ -829,7 +852,7 @@ function importRows(rows){
   var items=[],boxes=[],advs=[];
   rows.slice(hi+1).forEach(function(c){
     var B=String(c.B||"").trim();
-    if(/^SHIPPING$/i.test(B))return;
+    if(/^SHIPPING$/i.test(B)||/^TOTAL$/i.test(B))return;
     if(/^\(-?\s*ADVANCE/i.test(B)){var av=Math.abs(parseFloat(c.D||c.E||0))||0;advs.push({a:av?String(av):""});return}
     if(/^BOX\b/i.test(B)){boxes.push({kg:c.C||"",r:c.D||""});return}
     if(/^GRAND TOTAL$/i.test(String(c.D||"").trim()))return;
