@@ -261,11 +261,10 @@ input::placeholder{color:transparent!important}input:focus,input:focus-visible{o
     </div>
     <button class="alt" id="reset">New invoice</button>
     <button class="alt" id="imp">Import Excel</button><input type="file" id="xf" accept=".xlsx,.xlsm" hidden>
-    <button class="alt" id="xl">Save as Excel</button>
-    <button id="print">Print / Save PDF</button>
+    <button id="save">Save PDF + Excel</button>
   </div>
   <div id="xmsg" class="pmsg" hidden></div>
-  <div id="pmsg" class="pmsg" hidden>Printing is blocked inside this view. Open this page in your phone or computer browser (menu &rarr; Open in browser) and press Print again, or use the browser's own Share / Print option. The downloaded invoice.html file also prints normally.</div>
+  <div id="pmsg" class="pmsg" hidden>Printing is blocked inside this view. Open this page in your phone or computer browser (menu &rarr; Open in browser) and press Save PDF + Excel again, or use the browser's own Share / Print option. The downloaded invoice.html file also prints normally.</div>
   <div class="sheet">
     <div class="head">
       <div class="l">
@@ -583,16 +582,18 @@ function focusLast(sel){var l=document.querySelectorAll(sel);if(l.length)l[l.len
 $("addI").onclick=function(){S.items.push({d:"",q:"",r:""});render();focusLast('input[data-k="items"][data-f="d"]')};
 $("addB").onclick=function(){S.boxes.push({kg:"",r:""});render();focusLast('input[data-k="boxes"][data-f="kg"]')};
 $("addA").onclick=function(){S.advs.push({a:""});render();focusLast('input[data-k="advs"]')};
-$("print").onclick=function(){
-  if(!needNo())return;
-  var fired=false,h=function(){fired=true};
+function printAs(name){
+  var old=document.title,fired=false,h=function(){fired=true};
+  var back=function(){document.title=old;window.removeEventListener("afterprint",back)};
+  document.title=name;
+  window.addEventListener("afterprint",back);
   window.addEventListener("beforeprint",h);
   try{window.print()}catch(e){}
   setTimeout(function(){
     window.removeEventListener("beforeprint",h);
-    if(!fired){$("pmsg").hidden=false;try{$("pmsg").scrollIntoView({behavior:"smooth",block:"center"})}catch(e){}}
+    if(!fired){back();$("pmsg").hidden=false;try{$("pmsg").scrollIntoView({behavior:"smooth",block:"center"})}catch(e){}}
   },700);
-};
+}
 function newInvoice(){
   S={items:[{d:"",q:"",r:""}],boxes:[],advs:[]};
   ["name","country","no"].forEach(function(i){$(i).value=""});
@@ -803,7 +804,7 @@ async function saveFile(name,data){
   }
   var a=document.createElement("a");
   a.href=URL.createObjectURL(data);a.download=name;document.body.appendChild(a);a.click();a.remove();
-  if(window.claude)showX("Excel file could not be saved here ("+why+"). Open the downloaded invoice.html file on your computer and use Save as Excel there.");
+  if(window.claude)showX("Excel file could not be saved here ("+why+"). Open the downloaded invoice.html file on your computer and use Save PDF + Excel there.");
 }
 async function unzip(buf){
   var u=new Uint8Array(buf),dv=new DataView(buf),e=-1,out={},dec=new TextDecoder();
@@ -874,12 +875,14 @@ $("xf").onchange=async function(){
   try{importRows(readSheet(await unzip(await f.arrayBuffer())));$("xmsg").hidden=true}
   catch(e){showX("Could not read this file. Please choose the .xlsx saved from this invoice page.")}
 };
-$("xl").onclick=function(){
+$("save").onclick=async function(){
   if(!needNo())return;
   var bad=/[\\\/:*?"<>|]/g;
   var no=$("no").value.replace(/#/g,"").replace(bad," ").replace(/\s+/g," ").trim();
   var nm=$("name").value.replace(bad," ").replace(/\s+/g," ").trim();
-  saveFile("#"+no+(nm?" "+nm:"")+" "+$("date").textContent+".xlsx",buildXlsx());
+  var base="#"+no+(nm?" "+nm:"")+" "+$("date").textContent;
+  await saveFile(base+".xlsx",buildXlsx());
+  setTimeout(function(){printAs(base)},300);
 };
 libSync();
 (async function(){
@@ -963,7 +966,7 @@ if(sessOK)unlock(true);else showLogin();
 var mq=window.matchMedia("(max-width:640px)");
 function placeBtns(){
   var host=mq.matches?$("sv"):document.querySelector(".bar");
-  host.appendChild($("xl"));host.appendChild($("print"));
+  host.appendChild($("save"));
 }
 if(mq.addEventListener)mq.addEventListener("change",placeBtns);else if(mq.addListener)mq.addListener(placeBtns);
 placeBtns();
